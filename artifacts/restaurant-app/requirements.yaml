@@ -1,0 +1,26 @@
+packages:
+  "socket.io-client": "Real-time bidirectional event-based communication for order updates"
+  "zustand": "State management for cart and auth"
+  "recharts": "Charting library for manager reports"
+  "framer-motion": "Animations and layout transitions for guest menu"
+  "qrcode.react": "Generating QR codes for tables"
+  "date-fns": "Formatting timestamps for orders"
+  "react-hook-form": "Form state management"
+  "@hookform/resolvers": "Zod integration for forms"
+
+images:
+  - path: "artifacts/restaurant-app/public/images/hero-bg.png"
+    description: "Warm ambient lighting in a high-end luxury restaurant, blurred bokeh background, moody atmospheric photography, rich orange and amber tones"
+    aspect_ratio: "16:9"
+  - path: "artifacts/restaurant-app/public/images/logo.png"
+    description: "Minimalist elegant luxury restaurant logo mark, geometric line art representing a plate and steam in golden amber color on transparent or very dark background"
+    aspect_ratio: "1:1"
+  - path: "artifacts/restaurant-app/public/images/menu-placeholder.png"
+    description: "Delicious gourmet food plating, abstract culinary art, dark moody cinematic lighting, top-down view"
+    aspect_ratio: "4:3"
+
+notes:
+  - "Using Zustand with localStorage for JWT auth and Cart persistence"
+  - "Monkey-patching window.fetch in App.tsx to automatically append Bearer token from Zustand state to all /api/ requests"
+  - "Socket.io connects to /socket.io on the same origin"
+  - "Using a strictly dark-warm theme in index.css to enforce the restaurant ambiance across all devices"

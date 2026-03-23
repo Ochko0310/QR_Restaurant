@@ -91,6 +91,27 @@ Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used b
 
 Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
 
+### `artifacts/restaurant-app` (`@workspace/restaurant-app`)
+
+React + Vite web application serving as the full restaurant ordering system. Runs on port 19460, preview path `/`.
+
+**Guest flow:** `/menu?token=<qr_token>` — customers scan a table's QR code which navigates to the menu, browse categories/items, add to cart, and place orders. Tracks order status via Socket.IO real-time updates.
+
+**Staff flow:** `/staff/login` → `/staff` — role-based dashboard:
+- **Manager**: Sees all tabs — orders, kitchen, payment, menu CRUD, sales reports (Recharts), table QR management
+- **Waiter**: Orders + Tables tabs
+- **Chef**: Kitchen tab (confirm → preparing → ready)
+- **Cashier**: Payment tab (mark served orders as paid)
+
+Demo credentials: `manager/manager123`, `waiter/waiter123`, `chef/chef123`, `cashier/cashier123`
+
+Tech: React 19, Vite 7, TanStack Query, Wouter routing, Framer Motion, Recharts, Socket.IO client, Zustand, qrcode.react, date-fns, Tailwind v4 (dark by default, warm amber theme).
+
+### `lib/db` — Restaurant Schema
+
+Tables: `users`, `restaurants`, `restaurant_tables`, `sessions`, `menu_categories`, `menu_items`, `orders`, `order_items`.
+DB seeded with 4 staff users (hashed passwords), 6 tables with UUID QR tokens, 6 Mongolian menu categories, 20 menu items.
+
 ### `scripts` (`@workspace/scripts`)
 
 Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.

@@ -1,15 +1,25 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Restaurant QR Table Ordering System API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: tables
+    description: Restaurant tables and QR sessions
+  - name: menu
+    description: Menu categories and items
+  - name: orders
+    description: Order management
+  - name: reports
+    description: Sales and performance reports
+
 paths:
   /healthz:
     get:
@@ -19,18 +29,697 @@ paths:
       description: Returns server health status
       responses:
         "200":
-          description: Healthy
+          description: Server is healthy
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Staff login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /tables:
+    get:
+      operationId: getTables
+      tags: [tables]
+      summary: List all tables
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of tables
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Table"
+    post:
+      operationId: createTable
+      tags: [tables]
+      summary: Create a new table
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTableRequest"
+      responses:
+        "201":
+          description: Table created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+
+  /tables/{tableId}:
+    get:
+      operationId: getTable
+      tags: [tables]
+      summary: Get table details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Table info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+
+  /tables/{tableId}/qr:
+    get:
+      operationId: getTableQr
+      tags: [tables]
+      summary: Get QR code URL for table
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: QR code data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QrResponse"
+
+  /session/validate:
+    get:
+      operationId: validateSession
+      tags: [tables]
+      summary: Validate guest session token from QR
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionInfo"
+        "401":
+          description: Invalid or expired session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /menu/categories:
+    get:
+      operationId: getMenuCategories
+      tags: [menu]
+      summary: Get menu categories with items
+      responses:
+        "200":
+          description: Menu categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuCategory"
+    post:
+      operationId: createMenuCategory
+      tags: [menu]
+      summary: Create menu category
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMenuCategoryRequest"
+      responses:
+        "201":
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuCategory"
+
+  /menu/items:
+    get:
+      operationId: getMenuItems
+      tags: [menu]
+      summary: Get all menu items
+      responses:
+        "200":
+          description: Menu items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuItem"
+    post:
+      operationId: createMenuItem
+      tags: [menu]
+      summary: Create menu item
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMenuItemRequest"
+      responses:
+        "201":
+          description: Item created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItem"
+
+  /menu/items/{itemId}:
+    patch:
+      operationId: updateMenuItem
+      tags: [menu]
+      summary: Update menu item
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMenuItemRequest"
+      responses:
+        "200":
+          description: Item updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItem"
+    delete:
+      operationId: deleteMenuItem
+      tags: [menu]
+      summary: Delete menu item
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Item deleted
+
+  /orders:
+    get:
+      operationId: getOrders
+      tags: [orders]
+      summary: Get orders (staff)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, confirmed, preparing, ready, served, paid, cancelled]
+        - name: tableId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Orders list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+    post:
+      operationId: createOrder
+      tags: [orders]
+      summary: Place an order (guest)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderRequest"
+      responses:
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /orders/{orderId}:
+    get:
+      operationId: getOrder
+      tags: [orders]
+      summary: Get order details
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /orders/{orderId}/status:
+    patch:
+      operationId: updateOrderStatus
+      tags: [orders]
+      summary: Update order status (staff)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderStatusRequest"
+      responses:
+        "200":
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /orders/table/{tableToken}:
+    get:
+      operationId: getTableOrders
+      tags: [orders]
+      summary: Get orders for a guest table session
+      parameters:
+        - name: tableToken
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Table orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+
+  /reports/summary:
+    get:
+      operationId: getReportSummary
+      tags: [reports]
+      summary: Get sales summary report
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Sales summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSummary"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     HealthStatus:
       type: object
       properties:
         status:
           type: string
-      required:
-        - status
+        timestamp:
+          type: string
+      required: [status]
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required: [error]
+
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required: [username, password]
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"
+      required: [token, user]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [manager, waiter, chef, cashier]
+      required: [id, username, name, role]
+
+    Table:
+      type: object
+      properties:
+        id:
+          type: integer
+        number:
+          type: integer
+        name:
+          type: string
+        capacity:
+          type: integer
+        status:
+          type: string
+          enum: [available, occupied, reserved]
+        qrToken:
+          type: string
+      required: [id, number, name, capacity, status]
+
+    CreateTableRequest:
+      type: object
+      properties:
+        number:
+          type: integer
+        name:
+          type: string
+        capacity:
+          type: integer
+      required: [number, name, capacity]
+
+    QrResponse:
+      type: object
+      properties:
+        tableId:
+          type: integer
+        tableName:
+          type: string
+        token:
+          type: string
+        url:
+          type: string
+      required: [tableId, tableName, token, url]
+
+    SessionInfo:
+      type: object
+      properties:
+        tableId:
+          type: integer
+        tableName:
+          type: string
+        tableNumber:
+          type: integer
+        valid:
+          type: boolean
+      required: [tableId, tableName, tableNumber, valid]
+
+    MenuCategory:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        sortOrder:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MenuItem"
+      required: [id, name, sortOrder]
+
+    CreateMenuCategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        sortOrder:
+          type: integer
+      required: [name]
+
+    MenuItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        categoryId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        imageUrl:
+          type: string
+        available:
+          type: boolean
+        preparationTime:
+          type: integer
+      required: [id, categoryId, name, price, available]
+
+    CreateMenuItemRequest:
+      type: object
+      properties:
+        categoryId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        imageUrl:
+          type: string
+        available:
+          type: boolean
+        preparationTime:
+          type: integer
+      required: [categoryId, name, price]
+
+    UpdateMenuItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        imageUrl:
+          type: string
+        available:
+          type: boolean
+        preparationTime:
+          type: integer
+
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        menuItemId:
+          type: integer
+        menuItemName:
+          type: string
+        quantity:
+          type: integer
+        unitPrice:
+          type: number
+        notes:
+          type: string
+      required: [id, menuItemId, menuItemName, quantity, unitPrice]
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        tableId:
+          type: integer
+        tableName:
+          type: string
+        tableToken:
+          type: string
+        status:
+          type: string
+          enum: [pending, confirmed, preparing, ready, served, paid, cancelled]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+        totalAmount:
+          type: number
+        notes:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tableId, tableName, tableToken, status, items, totalAmount, createdAt]
+
+    CreateOrderRequest:
+      type: object
+      properties:
+        tableToken:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              menuItemId:
+                type: integer
+              quantity:
+                type: integer
+              notes:
+                type: string
+            required: [menuItemId, quantity]
+        notes:
+          type: string
+      required: [tableToken, items]
+
+    UpdateOrderStatusRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [confirmed, preparing, ready, served, paid, cancelled]
+      required: [status]
+
+    ReportSummary:
+      type: object
+      properties:
+        totalOrders:
+          type: integer
+        totalRevenue:
+          type: number
+        averageOrderValue:
+          type: number
+        ordersByStatus:
+          type: object
+          additionalProperties:
+            type: integer
+        topItems:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              quantity:
+                type: integer
+              revenue:
+                type: number
+      required: [totalOrders, totalRevenue, averageOrderValue]
