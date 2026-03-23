@@ -219,10 +219,7 @@ function MenuItemCard({ item }: { item: MenuItem }) {
           {item.description && <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{item.description}</p>}
         </div>
         
-        <div className="mt-4 flex items-center justify-between">
-          <div className="flex items-center text-xs text-muted-foreground gap-1">
-            <Clock size={12} /> {item.preparationTime || 15} мин
-          </div>
+        <div className="mt-4 flex justify-end">
           <Button 
             size="sm" 
             className="h-8 rounded-lg font-bold shadow-md shadow-primary/20"
