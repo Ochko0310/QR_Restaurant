@@ -12,3 +12,9 @@ id = "tS7HpL-AI2FiZ2N2CAKyE"
 uri = "file://qr_restaurant_ordering_system_paper.md"
 type = "text"
 title = "QR Код Дээр Суурилсан Рестораны Захиалгын Системийн Paper"
+
+[[outputs]]
+id = "PJaMccSNa1suDJRq7q8TD"
+uri = "file://qr_restaurant_system_full_paper.md"
+type = "text"
+title = "QR Кодоор Суурилсан Рестораны Захиалгын Систем — Бүрэн Дэлгэрэнгүй Paper"
