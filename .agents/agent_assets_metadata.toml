@@ -36,3 +36,9 @@ id = "5ytWv6Q28PGrVrEz_o5jG"
 uri = "file://diploma_latex_MUST.tar.gz"
 type = "unspecified"
 title = "Diploma LaTeX — diploma_latex_MUST.tar.gz"
+
+[[outputs]]
+id = "Ubu1Mf4oKZ6iJFrvZwHMJ"
+uri = "file://artifacts/api-server/paper/paper.pdf"
+type = "pdf"
+title = "Academic Paper — QR кодоор хоол захиалах систем"

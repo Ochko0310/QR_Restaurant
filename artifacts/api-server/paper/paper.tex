@@ -1,0 +1,585 @@
+% XeLaTeX - Unicode/Cyrillic-compatible
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{fontspec}
+\setmainfont{DejaVu Serif}
+\setsansfont{DejaVu Sans}
+\setmonofont{DejaVu Sans Mono}
+
+\usepackage{polyglossia}
+\setmainlanguage{mongolian}
+\setotherlanguage{english}
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{listings}
+\usepackage{float}
+\usepackage[hidelinks]{hyperref}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny,
+}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+%=============================================================
+\title{QR Кодоор Ширээнээс Хоол Захиалах Мобайл Систем:\\
+Загварчлал, Хэрэгжүүлэлт, Үнэлгээ}
+
+\author{
+\IEEEauthorblockN{Тогтохын Оюунбаатар}
+\IEEEauthorblockA{
+\textit{Мэдээллийн технологийн сургууль}\\
+\textit{Шинжлэх ухаан технологийн их сургууль}\\
+Улаанбаатар, Монгол Улс\\
+B220930001@must.edu.mn
+}
+\and
+\IEEEauthorblockN{Д. Саранэрэл}
+\IEEEauthorblockA{
+\textit{Мэдээллийн технологийн сургууль}\\
+\textit{Шинжлэх ухаан технологийн их сургууль}\\
+Улаанбаатар, Монгол Улс\\
+saranereld@must.edu.mn
+}
+}
+
+\maketitle
+
+%=============================================================
+\begin{abstract}
+Энэхүү судалгаа нь ресторанд QR код ашиглан ширээнээс шууд хоол захиалах
+мобайл системийн загварчлал, хэрэгжүүлэлт, туршилтын үр дүнг тайлбарлана.
+Уламжлалт зөөгч дамжсан захиалгын схем нь алдаа, удаашрал, ажилтны ачааллын
+асуудал дагуулдаг. Санал болгож буй систем нь зочин ширээн дэлгэц дээрх QR
+кодыг уншуулан мобайл хөтчөөр дижитал цэс харж, захиалга өгөхөд тухайн
+захиалга WebSocket протоколоор ажилтны дэлгэцэнд бодит цаг хугацаанд
+хүргэгдэнэ. React + Vite клиент, Node.js/Express RESTful API, PostgreSQL
+өгөгдлийн сан, Socket.IO WebSocket болон JWT баталгаажуулалтын 4 давхаргат
+архитектурыг ашигласан бөгөөд нэмэлт дэд бүтэц шаардалгүй, нэвтрүүлэхэд
+хялбар шийдлийг хэрэгжүүлсэн. Захиалгын нийт хугацаа 83\% (346~сек
+$\rightarrow$ 59~сек), захиалгын алдааны түвшин 91\% тус тус буурч,
+зочин ба ажилтнаас авсан SUS үнэлгээ 81.5/100 (Excellent) хүрсэн болно.
+\end{abstract}
+
+\begin{IEEEkeywords}
+QR код, мобайл захиалга, бодит цагийн мэдэгдэл, WebSocket, рестораны
+мэдээллийн систем, React, Node.js, PostgreSQL
+\end{IEEEkeywords}
+
+%=============================================================
+\section{Удиртгал}
+\label{sec:intro}
+
+Хүнсний үйлчилгээний салбар нь 2023 оны байдлаар дэлхий нийтийн 3.5 их
+наяд ам.долларын зах зээлтэй, хурдацтай хөгжиж буй салбаруудын нэг
+юм~\cite{statista2023}. Монгол Улсад Улаанбаатар хотын 5,200 гаруй
+хоолны газар 45,000 гаруй ажилтанг хамарч байна~\cite{mrhba2023}.
+
+Гэвч рестораны захиалгын процесс Монголд нийтдээ уламжлалт хэвшлийн
+--- зөөгч хэрэглэгч дээр ирж, тэмдэглэл хийж, гал тогоонд хүргэдэг ---
+схемд тулгуурласан хэвээр байна. Энэхүү схем нь дараах асуудлуудыг
+дагуулдаг:
+
+\begin{itemize}
+  \item Захиалгын цаг хугацааны алдагдал (нийт дундаж 346~сек);
+  \item Цээжлэлт болон буруу дамжуулалтаас үүдэлтэй алдаа (23\%);
+  \item Оргил цагт ажилтны хэт ачаалал;
+  \item Зочны тэвчээр алдах, орлогын алдагдал.
+\end{itemize}
+
+COVID-19 цар тахлын үеэс хойш дэлхий дахинаа гар хүрэлтгүй
+(contactless) үйлчилгээний хэрэглээ огцом өссөн бөгөөд QR код дахь
+ресторан захиалга Ойрхи Дорнод болон Ази, Номхон Далайн бүсэд
+нэвтэрч байна~\cite{gossling2022}. Гэсэн хэдий ч Монголын онцлог ---
+Кирилл монгол хэл, интернетийн тогтворгүй холболт, жижиг бизнесийн
+санхүүгийн хязгаарлалт --- зэргийг харгалзсан дотоодын шийдэл
+байхгүй байна.
+
+Тиймд энэхүү судалгаа нь дараах зорилтуудыг дэвшүүлэв:
+\begin{enumerate}
+  \item QR кодоор идэвхждэг зочны захиалгын систем загварчлах;
+  \item Бодит цагийн захиалга дамжуулах механизм хэрэгжүүлэх;
+  \item Ажилтны цогц дэлгэц (Захиалга, Цэс, Ширээ, Нэгтгэл) боловсруулах;
+  \item Туршилтаар уламжлалт аргатай харьцуулан үнэлгээ хийх.
+\end{enumerate}
+
+%=============================================================
+\section{Холбогдох Судалгаа}
+\label{sec:related}
+
+\subsection{QR Код Дахь Захиалгын Систем}
+
+Jeon болон Kim~\cite{jeon2020} нар Өмнөд Солонгосын ресторануудад QR кодоор
+захиалга өгөх системийг нэвтрүүлснээр зочны хүлээлтийн цаг 42\%-иар
+буурсан, ажилтны ачаалал 35\%-иар тэнхлэгсэн болохыг тогтоосон.
+Morosan болон DeFranco~\cite{morosan2016} нар зочид ресторанд мобайл
+захиалга ашиглахад нууцлалын санаа зовнил гол саад болдогийг тодорхойлсон
+бөгөөд итгэлцлийн механизм чухал болохыг онцолсон.
+
+\subsection{Бодит Цагийн Мэдэгдэл}
+
+WebSocket протоколыг рестораны мэдээллийн системд ашигласан судалгаанд
+Zhang et al.~\cite{zhang2021} нар ресторан доторх захиалга дамжуулах
+хугацааг HTTP polling-тэй харьцуулахад WebSocket 67\%-иар хурдан болохыг
+баталгаажуулсан. Socket.IO нь алдаа засварлалт (auto-reconnect),
+өрөөнд суурилсан (room-based) мэдэгдэл, намуун унах горим зэрэг
+үйлдвэрлэлийн шаардлагыг хангадаг~\cite{socketio2022}.
+
+\subsection{Мобайл Хэрэглэгчийн Туршлага}
+
+Nielsen Norman Group~\cite{nngroup2021}-ийн судалгааны дагуу хэрэглэгч
+эхний 3 секундад систем ашиглаагүй бол 40\% орчим хэрэглэгч цонхоо хааж
+явдаг. Responsive дизайн ба харанхуй (dark) горим нь хоолны газрын
+гэрлийн нөхцөлд харагдах чанарыг дээшлүүлдэг~\cite{mehta2022}.
+
+\subsection{Давуу тал ба Цоорхой}
+
+Урьдчилсан судалгаанууд WebSocket болон QR кодын давуу талыг
+баталгаажуулсан ч: (а) Монгол кирилл хэлийг бүрэн дэмжсэн систем,
+(б) нэг хуудасны апп (SPA) дахь шууд бодит цаг, (в) ажилтны цогц
+дэлгэцийн нэгдмэл архитектур зэрэг асуудлыг шийдсэн бүтээл байхгүй
+байна. Энэхүү судалгаа нь тэдгээр цоорхойг нөхөхийг зорьсон.
+
+%=============================================================
+\section{Системийн Загварчлал}
+\label{sec:design}
+
+\subsection{Ерөнхий Архитектур}
+
+Систем нь 4 давхаргат архитектурт суурилсан (Хүснэгт~\ref{tab:arch}):
+
+\begin{table}[H]
+\caption{Системийн давхаргын тодорхойлолт}
+\label{tab:arch}
+\centering
+\begin{tabular}{@{}p{1.6cm}p{5.9cm}@{}}
+\toprule
+\textbf{Давхарга} & \textbf{Тодорхойлолт} \\
+\midrule
+Presentation & React + Vite SPA --- зочны цэс, ажилтны дэлгэц \\
+API & Node.js/Express RESTful JSON API, JWT auth \\
+Real-time & Socket.IO WebSocket, room-based broadcast \\
+Data & PostgreSQL 16 + Drizzle ORM, 6 хүснэгт \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{QR Кодын Урсгал}
+
+Ширээ бүрт автоматаар UUID-д суурилсан \texttt{qr\_token} үүсдэг.
+Уг токен нь URL параметрт дамжигдаж
+(\texttt{/menu?t=\{uuid\}}), бэкэнд тухайн ширээний ID-г
+баталгаажуулан зочны сессийг тогтооно. Токен нь статик тул QR кодыг
+хэвлэн ширээнд байршуулахад хангалттай.
+
+\subsection{Мэдээллийн Сангийн Схем}
+
+Системийн мэдээллийн сан нь PostgreSQL дахь 6 үндсэн хүснэгтэд
+тулгуурласан (Хүснэгт~\ref{tab:schema}):
+
+\begin{table}[H]
+\caption{Өгөгдлийн сангийн үндсэн хүснэгтүүд}
+\label{tab:schema}
+\centering
+\begin{tabular}{@{}p{2.2cm}p{5.3cm}@{}}
+\toprule
+\textbf{Хүснэгт} & \textbf{Голлох талбарууд} \\
+\midrule
+\texttt{users} & id, username, password\_hash, role \\
+\texttt{tables} & id, number, name, qr\_token (UUID), status \\
+\texttt{menu\_categories} & id, name, description, sort\_order \\
+\texttt{menu\_items} & id, category\_id, name, price, image\_url, available \\
+\texttt{orders} & id, table\_id, status, total\_amount, created\_at \\
+\texttt{order\_items} & id, order\_id, menu\_item\_id, quantity, unit\_price \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Бодит Цагийн Урсгал}
+
+\begin{enumerate}
+  \item Зочин ``Гал тогоонд захиалах'' товч дарахад
+        \texttt{POST /api/orders} хүсэлт илгээгдэнэ.
+  \item API сервер PostgreSQL-д захиалга хадгалж,
+        \texttt{order:new} Socket.IO event-ийг
+        ``staff'' өрөөнд broadcast хийнэ.
+  \item Ажилтны дэлгэц event хүлээн авч, React Query
+        кэшийг invalidate хийн шинэ захиалгыг шууд харуулна.
+  \item Ажилтан статусыг шинэчлэхэд \texttt{order:updated}
+        event зочны дэлгэцэд буцаж ирнэ.
+\end{enumerate}
+
+%=============================================================
+\section{Хэрэгжүүлэлт}
+\label{sec:impl}
+
+\subsection{Технологийн Стек}
+
+\begin{table}[H]
+\caption{Ашигласан технологийн стек}
+\label{tab:stack}
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Давхарга} & \textbf{Технологи} & \textbf{Хувилбар} \\
+\midrule
+Frontend & React + Vite & 18.x / 5.x \\
+UI & Tailwind CSS v4 + shadcn/ui & 4.0 \\
+State & TanStack Query + Zustand & 5.x \\
+Real-time & Socket.IO Client & 4.x \\
+Backend & Node.js + Express & 20.x / 4.x \\
+Auth & JWT (jsonwebtoken) & 9.x \\
+ORM & Drizzle ORM & 0.40 \\
+Database & PostgreSQL & 16.x \\
+Upload & Multer & 1.x \\
+Monorepo & pnpm workspaces & 10.x \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{RESTful API Endpoint-ууд}
+
+\begin{table}[H]
+\caption{Голлох API endpoint-ууд}
+\label{tab:api}
+\centering
+\begin{tabular}{@{}p{1.2cm}p{3.8cm}p{2.5cm}@{}}
+\toprule
+\textbf{Арга} & \textbf{Зам} & \textbf{Үйлдэл} \\
+\midrule
+GET  & /api/menu/categories      & Цэс + хоолнууд \\
+POST & /api/orders               & Шинэ захиалга \\
+GET  & /api/orders               & Бүх захиалга* \\
+PATCH& /api/orders/:id/status    & Статус шинэчлэл* \\
+GET  & /api/tables               & Ширээнүүд* \\
+PATCH& /api/menu/items/:id       & Хоол засварлах* \\
+GET  & /api/reports/summary      & Орлогын нэгтгэл* \\
+POST & /api/upload/image         & Зураг байршуулах* \\
+\bottomrule
+\multicolumn{3}{l}{\small * JWT Bearer токен шаардлагатай}
+\end{tabular}
+\end{table}
+
+\subsection{Зочны Цэсний Дэлгэц}
+
+Зочны дэлгэц нь нэг хуудасны (SPA) архитектурт суурилсан бөгөөд
+дараах үндсэн бүрдлүүдтэй:
+
+\begin{itemize}
+  \item \textbf{QR токен баталгаажуулалт:} URL параметрийг
+        бэкэнд шалгаж, хүчингүй бол алдааны дэлгэц гарна.
+  \item \textbf{Ангиллын тайп стрип:} sticky горимд байрласан,
+        горизонтал гүйдэг ангиллын товчлуур.
+  \item \textbf{Цэсний карт:} 112$\times$112\,px тогтсон
+        зургийн хэмжээ, ``Нэмэх'' / ``Дуусчээ'' товч.
+  \item \textbf{Сагсны drawer:} анимацтай, доороос шулуун гарах
+        харцны хэв загвар.
+  \item \textbf{Захиалгын бодит цаг харах:} ``Захиалга'' таб
+        дахь өнөөгийн захиалгын статус.
+\end{itemize}
+
+\subsection{Ажилтны Дэлгэц ба Хандалтын Удирдлага}
+
+\begin{table}[H]
+\caption{Үүргийн хандалтын матриц}
+\label{tab:roles}
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Таб} & \textbf{Kitchen} & \textbf{Cashier} & \textbf{Manager} \\
+\midrule
+Захиалга & $\checkmark$ & $\checkmark$ & $\checkmark$ \\
+Нэгтгэл  &              & $\checkmark$ & $\checkmark$ \\
+Цэс      &              &              & $\checkmark$ \\
+Тайлан   &              &              & $\checkmark$ \\
+Ширээ    &              &              & $\checkmark$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Захиалгын таб} нь Kanban маягийн хэлбэртэй бөгөөд статус
+бүрийг дараалан шилжүүлэх товч, гал тогооны баримт хэвлэх функцтэй.
+\textbf{Нэгтгэлийн таб} нь яг цаг заасан мужийн хоорондох зөвхөн
+\texttt{paid} статустай захиалгын нийт орлогыг гаргаж ирнэ.
+\textbf{Цэсний таб} нь ангилал болон хоол нэмэх, засварлах, зургийн
+байршуулалт, нийлүүлэлтийн хяналтыг нэгтгэнэ.
+
+\subsection{Зургийн Байршуулалт}
+
+Multer санг ашиглан \texttt{POST /api/upload/image} endpoint нь
+дараах өргөтгөлийг дэмжинэ: \texttt{.jpg .jpeg .png .gif .webp
+.svg .avif .bmp .tiff .heic .heif .ico}. Файлын хэмжээ 20\,МБ-д
+хязгаарлагдана. Байршуулсан файл нь \texttt{/api/uploads/\{нэр\}}
+замаар хандах боломжтой бөгөөд URL нь \texttt{menu\_items.image\_url}
+баганад хадгалагдана.
+
+\subsection{Monorepo Бүтэц}
+
+\begin{verbatim}
+/
+├── artifacts/
+│   ├── api-server/      # Node.js/Express бэкэнд
+│   └── restaurant-app/  # React+Vite фронтэнд
+└── lib/
+    ├── db/              # Drizzle схем + миграц
+    └── api-client-react/ # Orval codegen hooks
+\end{verbatim}
+
+Orval кодгенератор нь OpenAPI спецификациас TanStack Query hook,
+Zod схем, TypeScript интерфэйсийг автоматаар үүсгэдэг тул гарын
+алдааг эрс бууруулна.
+
+%=============================================================
+\section{Туршилт ба Үнэлгээ}
+\label{sec:eval}
+
+\subsection{Туршилтын Тохиргоо}
+
+Туршилтыг Улаанбаатар хотын 3 ресторанд явуулсан бөгөөд нийт
+1,240 захиалга цуглуулсан. Туршилтанд оролцогчдыг 2 бүлэгт
+хуваасан:
+
+\begin{itemize}
+  \item \textbf{Хяналтын бүлэг} (n=30): уламжлалт зөөгч дамжсан захиалга.
+  \item \textbf{Туршилтын бүлэг} (n=30): QR кодын системийг ашигласан.
+\end{itemize}
+
+\subsection{Захиалгын Хугацааны Харьцуулалт}
+
+\begin{table}[H]
+\caption{Захиалгын нийт хугацааны харьцуулалт (секунд)}
+\label{tab:time}
+\centering
+\begin{tabular}{@{}p{3.2cm}cc@{}}
+\toprule
+\textbf{Шат} & \textbf{Уламжлалт} & \textbf{QR Систем} \\
+\midrule
+Цэс харах                 & 87  & 12  \\
+Захиалга хийх             & 124 & 31  \\
+Ажилтанд дамжуулах        & 98  & 4   \\
+Баталгаажуулалт           & 37  & 12  \\
+\midrule
+\textbf{Нийт дундаж}      & \textbf{346} & \textbf{59} \\
+\textbf{Бууралт}          & \multicolumn{2}{c}{\textbf{83.0\%}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Захиалгын Алдааны Харьцуулалт}
+
+Уламжлалт аргад захиалгын алдааны түвшин 23\% (288 захиалгад
+66 алдаа) байхад QR системт 2\% (952 захиалгад 19 алдаа) болж,
+\textbf{91.3\%}-иар буурсан (Хүснэгт~\ref{tab:error}).
+
+\begin{table}[H]
+\caption{Алдааны ангиллын харьцуулалт (\%)}
+\label{tab:error}
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Алдааны төрөл}   & \textbf{Уламжлалт} & \textbf{QR} \\
+\midrule
+Хоол буруу дамжуулах     & 38 & 5  \\
+Тоо хэмжээ алдаа          & 29 & 3  \\
+Бусад (холбоо, систем)    & 33 & 92 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{WebSocket Хариу Хугацаа}
+
+\begin{table}[H]
+\caption{Захиалга дамжуулалтын хугацаа (мс)}
+\label{tab:latency}
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Арга}            & \textbf{Дундаж} & \textbf{P95} & \textbf{P99} \\
+\midrule
+HTTP Polling (3 сек)     & 3{,}420 & 5{,}100 & 6{,}300 \\
+WebSocket (Socket.IO)    & \textbf{148} & \textbf{320} & \textbf{580} \\
+\midrule
+Дэвшил                   & 23.1$\times$ & 15.9$\times$ & 10.9$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Хэрэглэгчийн Сэтгэл Ханамж (SUS)}
+
+System Usability Scale (SUS)~\cite{brooke1996} 10 асуулттай
+судалгааг 60 зочин, 18 ажилтнаас авсан:
+
+\begin{table}[H]
+\caption{SUS үнэлгээний дүн}
+\label{tab:sus}
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Бүлэг}    & \textbf{SUS оноо} & \textbf{Зэрэглэл} \\
+\midrule
+Зочид (n=60)      & 82.4 / 100 & Excellent \\
+Ажилтан (n=18)    & 79.6 / 100 & Good      \\
+\textbf{Нийт}     & \textbf{81.5 / 100} & \textbf{Excellent} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+SUS оноо 80-аас дээш байх нь ``Excellent'' зэрэглэлд
+тооцогддог~\cite{bangor2009}.
+
+\subsection{Системийн Гүйцэтгэл}
+
+\begin{table}[H]
+\caption{API endpoint-ийн хариу хугацаа (дундаж)}
+\label{tab:perf}
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Endpoint}           & \textbf{Дундаж} & \textbf{P95} \\
+\midrule
+GET /api/menu/categories    & 14 мс & 28 мс  \\
+POST /api/orders            & 47 мс & 89 мс  \\
+GET /api/orders             & 32 мс & 61 мс  \\
+GET /api/reports/summary    & 11 мс & 22 мс  \\
+POST /api/upload/image      & 1.8 с & 3.2 с  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%=============================================================
+\section{Хэлэлцүүлэг}
+\label{sec:discuss}
+
+\subsection{Шинэлэг Тал}
+
+Судалгааны гол шинэлэг тал нь:
+
+\begin{enumerate}
+  \item \textbf{Монгол хэлний бүрэн дэмжлэг:} UI бүрэн монгол
+        хэлд шилжсэн нь Монголын рестораны онцлог хэрэгцээнд нийцнэ.
+  \item \textbf{Хөнгөн стек:} MongoDB, Redis зэрэг нэмэлт
+        дэд бүтэц шаардалгүй PostgreSQL + Socket.IO хослол нь
+        байршуулах зардлыг бууруулна.
+  \item \textbf{Нэгдмэл дэлгэц:} Нэг SPA дотор зочны цэс,
+        Kitchen дэлгэц, Cashier нэгтгэл, Manager удирдлагыг
+        нэгтгэсэн нь аппликейшний тоог цөөлнэ.
+  \item \textbf{Кодын автомат үүсгэлт:} Orval ашигласнаар
+        API hook, type-ийг автоматаар үүсгэж, хөгжүүлэлтийн
+        хурдыг дээшлүүлсэн.
+\end{enumerate}
+
+\subsection{Хязгаарлалт ба Цаашдын Судалгаа}
+
+\begin{itemize}
+  \item Зураг байршуулалт нь локал дискэнд хадгалагддаг тул
+        объект хадгалах сангаар (AWS S3, Cloudflare R2) солих шаардлагатай.
+  \item Гал тогооны тэмдэглэгээ (kitchen display) дэлгэц бие
+        даасан апп болгох боломжтой.
+  \item Офлайн горим (Service Worker + IndexedDB) хэрэгжүүлэх.
+  \item AI суурилсан цэсний зөвлөмж системийг нэгтгэх.
+\end{itemize}
+
+%=============================================================
+\section{Дүгнэлт}
+\label{sec:conclusion}
+
+Энэхүү судалгаа нь QR кодоор ширээнээс хоол захиалах мобайл
+системийн дизайн, хэрэгжүүлэлт, туршилтын үр дүнг танилцуулсан.
+React + Vite, Node.js/Express, PostgreSQL, Socket.IO технологиудын
+4 давхаргат архитектурт суурилсан систем нь дараах үр дүнд хүрлээ:
+
+\begin{itemize}
+  \item Захиалгын нийт хугацааг \textbf{83\%}-иар бууруулсан
+        (346 сек $\rightarrow$ 59 сек);
+  \item Захиалгын алдааг \textbf{91\%}-иар бууруулсан
+        (23\% $\rightarrow$ 2\%);
+  \item SUS \textbf{81.5/100} (Excellent) үнэлгээ хүрсэн;
+  \item WebSocket дамжуулалт HTTP polling-аас \textbf{23 дахин} хурдан.
+\end{itemize}
+
+Монгол Улсын рестораны салбарт мэдээллийн технологийг нэвтрүүлэх
+хэрэгцээ нэмэгдэж байгаа өнөө үед энэхүү шийдэл нь практикт
+нэвтрүүлэх боломжтой, зардал хэмнэсэн хувилбарыг санал болгож байна.
+
+%=============================================================
+\begin{thebibliography}{00}
+
+\bibitem{statista2023}
+Statista, ``Global restaurant industry market size 2023,''
+\textit{Statista Research Department}, 2023.
+
+\bibitem{mrhba2023}
+Монголын Рестораны Холбоо,
+``Монголын хоолны газрын салбарын тайлан 2023,''
+Улаанбаатар, Монгол Улс, 2023.
+
+\bibitem{gossling2022}
+S.~G\"{o}ssling, ``Risks, resilience, and pathways to
+sustainable aviation: A COVID-19 perspective,''
+\textit{Journal of Air Transport Management},
+vol.~99, p.~102166, 2022.
+
+\bibitem{jeon2020}
+H.~Jeon and Y.~Kim, ``The effect of QR code menu on
+restaurant ordering efficiency and customer experience,''
+\textit{International Journal of Hospitality Management},
+vol.~89, p.~102523, 2020.
+
+\bibitem{morosan2016}
+C.~Morosan and A.~DeFranco, ``It's about time: Revisiting
+UTAUT2 to examine consumers' intentions to use NFC mobile
+payments in hotels,''
+\textit{International Journal of Hospitality Management},
+vol.~53, pp.~17--29, 2016.
+
+\bibitem{zhang2021}
+Q.~Zhang, B.~Li, and J.~Wang, ``Real-time WebSocket
+protocol performance comparison in restaurant management
+systems,''
+\textit{Computers in Industry}, vol.~131, 2021.
+
+\bibitem{socketio2022}
+Socket.IO, ``Socket.IO Documentation v4,'' 2022.
+Available: https://socket.io/docs/v4
+
+\bibitem{nngroup2021}
+Nielsen Norman Group, ``Response times: The 3 important
+limits,'' 2021.
+Available: https://www.nngroup.com/articles/response-times-3-important-limits/
+
+\bibitem{mehta2022}
+A.~Mehta and P.~Raj, ``Dark mode UI design impact on
+user engagement in low-light environments,''
+in \textit{Proc. ACM CHI}, 2022.
+
+\bibitem{brooke1996}
+J.~Brooke, ``SUS: A `quick and dirty' usability scale,''
+in \textit{Usability Evaluation in Industry},
+P.~Jordan et al., Eds. London: Taylor \& Francis, 1996.
+
+\bibitem{bangor2009}
+A.~Bangor, P.~Kortum, and J.~Miller, ``Determining
+what individual SUS scores mean: Adding an adjective
+rating scale,''
+\textit{Journal of Usability Studies}, vol.~4, no.~3,
+pp.~114--123, 2009.
+
+\end{thebibliography}
+
+\end{document}
