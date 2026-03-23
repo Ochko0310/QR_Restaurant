@@ -1,0 +1,131 @@
+% ================================================================
+%  ШУТИС – Бакалаврын Дипломын Ажил – XeLaTeX / tectonic
+%  Тогтохын Оюунбаатар  B220930001
+% ================================================================
+\documentclass[12pt,a4paper]{report}
+
+\usepackage{fontspec}
+\setmainfont{DejaVu Serif}
+\setsansfont{DejaVu Sans}
+\setmonofont[Scale=0.85]{DejaVu Sans Mono}
+
+\usepackage{polyglossia}
+\setmainlanguage{mongolian}
+\setotherlanguage{english}
+
+\usepackage{geometry}
+\geometry{a4paper, left=3cm, right=2cm, top=2.5cm, bottom=2.5cm}
+
+\usepackage{setspace}
+\onehalfspacing
+
+\\usepackage{amsmath,amssymb}
+
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{tabularx}
+\\usepackage{longtable}
+\usepackage{colortbl}
+\newcolumntype{Y}{>{\centering\arraybackslash}X}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+
+\usepackage[table]{xcolor}
+\definecolor{MUSTBlue}{RGB}{0,70,127}
+\definecolor{TableHdr}{RGB}{70,130,180}
+\definecolor{OliveGreen}{RGB}{85,107,47}
+\definecolor{CadetBlue}{RGB}{95,158,160}
+\definecolor{CodeBG}{RGB}{248,248,248}
+\definecolor{LightBlue}{RGB}{240,248,255}
+
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{subcaption}
+
+\usepackage{tikz}
+\usetikzlibrary{shapes,shapes.geometric,arrows,arrows.meta,positioning,fit,calc}
+
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\bfseries\color{OliveGreen},
+  commentstyle=\itshape\color{CadetBlue},
+  stringstyle=\color{red!70!black},
+  backgroundcolor=\color{CodeBG},
+  frame=single,
+  rulecolor=\color{gray!40},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=2,
+  captionpos=b,
+}
+\renewcommand{\lstlistingname}{Эх код}
+
+\usepackage{enumitem}
+\usepackage{url}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+\\usepackage[hidelinks]{hyperref}
+
+\usepackage{titlesec}
+\titleformat{\chapter}[display]
+  {\normalfont\Large\bfseries\centering}
+  {\MakeUppercase{\chaptertitlename}~\thechapter}{12pt}{\Large\bfseries\MakeUppercase}
+\titlespacing*{\chapter}{0pt}{10pt}{20pt}
+\titleformat{\section}{\normalsize\bfseries}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\itshape}{\thesubsubsection}{0.5em}{}
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textit{QR Кодоор Ширээнээс Хоол Захиалах Мобайл Систем}}
+\fancyhead[R]{\small ШУТИС -- МХТ}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancypagestyle{plain}{%
+  \fancyhf{}
+  \fancyfoot[C]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}%
+}
+
+\usepackage{caption}
+\captionsetup{font=small,labelfont=bf}
+\renewcommand{\figurename}{Зураг}
+\renewcommand{\tablename}{Хүснэгт}
+\renewcommand{\contentsname}{Гарчиг}
+\renewcommand{\listfigurename}{Зургийн жагсаалт}
+\renewcommand{\listtablename}{Хүснэгтийн жагсаалт}
+\renewcommand{\chaptername}{Бүлэг}
+\renewcommand{\appendixname}{Хавсралт}
+\renewcommand{\bibname}{Ном зүй}
+
+\usepackage[numbers,sort&compress]{natbib}
+\bibliographystyle{unsrtnat}
+
+\setcounter{tocdepth}{3}
+\setcounter{secnumdepth}{3}
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{4pt}
+
+% ================================================================
+\begin{document}
+
+\include{front/frontmatter}
+
+\tableofcontents
+\listoffigures
+\listoftables
+\clearpage
+
+\include{chapters/ch1}
+\include{chapters/ch2}
+\include{chapters/ch3}
+\include{chapters/conclusion}
+
+\addcontentsline{toc}{chapter}{Ном зүй}
+\bibliography{refs}
+
+\end{document}

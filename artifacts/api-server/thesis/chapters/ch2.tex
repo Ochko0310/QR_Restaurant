@@ -1,0 +1,344 @@
+% ================================================================
+%  БҮЛЭГ 2: СИСТЕМИЙН ШААРДЛАГА БА ШИНЖИЛГЭЭ
+% ================================================================
+\chapter{СИСТЕМИЙН ШААРДЛАГА БА ШИНЖИЛГЭЭ}
+\label{ch2}
+
+\section{Системийн үйл ажиллагааны тухай дэлгэрэнгүй}
+
+Санал болгож буй систем нь дараах бүрэн урсгалыг хэрэгжүүлнэ (Зураг~\ref{fig:flow}):
+
+\begin{enumerate}[leftmargin=*]
+  \item Үйлчлүүлэгч ресторанд орж ширээнд суухад ширээн дэлгэц дээр QR код байрлана;
+  \item Хэрэглэгч смартфоны камераар QR кодыг уншуулна;
+  \item Мобайл аппликейшн автоматаар нээгдэж тухайн рестораны дижитал цэс 3 секундын
+        дотор харагдана;
+  \item Хэрэглэгч хоол сонгож сагсанд нэмэн ``Захиалга өгөх'' товчийг дарна;
+  \item Захиалга нь WebSocket протоколоор ажилтны дэлгэцэнд бодит цаг хугацаанд дамжина;
+  \item Цайчин захиалгыг баталгаажуулахад зочны дэлгэцэнд мэдэгдэл ирнэ;
+  \item Тогооч хоол бэлтгэж ``Бэлэн боллоо'' тэмдэглэхэд зочны дэлгэцэнд мэдэгдэл ирнэ;
+  \item Зочин тооцоо хийлгэхэд кассир тооцоог баталгаажуулна.
+\end{enumerate}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  step/.style={rectangle, draw, rounded corners=4pt, minimum width=3.5cm,
+    minimum height=0.9cm, align=center, font=\small, fill=blue!10},
+  decision/.style={diamond, draw, aspect=2, minimum width=3cm,
+    minimum height=0.7cm, align=center, font=\scriptsize, fill=yellow!20},
+  arr/.style={-{Stealth}, thick},
+  node distance=1.2cm
+]
+\node[step] (qr) {QR код уншуулах};
+\node[step, below=of qr] (menu) {Цэс харуулах};
+\node[step, below=of menu] (order) {Захиалга үүсгэх};
+\node[step, below=of order] (ws) {WebSocket дамжуулалт};
+\node[step, below=of ws] (confirm) {Ажилтан баталгаажуулах};
+\node[step, below=of confirm] (prepare) {Гал тогоо бэлтгэх};
+\node[step, below=of prepare] (serve) {Хоол хүргэх};
+\node[step, below=of serve] (pay) {Тооцоо хийх};
+
+\draw[arr] (qr) -- (menu);
+\draw[arr] (menu) -- (order);
+\draw[arr] (order) -- (ws);
+\draw[arr] (ws) -- (confirm);
+\draw[arr] (confirm) -- (prepare);
+\draw[arr] (prepare) -- (serve);
+\draw[arr] (serve) -- (pay);
+
+\node[right=1.5cm of qr, font=\scriptsize, text=gray] {GET /api/tables/:token};
+\node[right=1.5cm of order, font=\scriptsize, text=gray] {POST /api/orders};
+\node[right=1.5cm of ws, font=\scriptsize, text=gray] {socket.emit('new\_order')};
+\node[right=1.5cm of pay, font=\scriptsize, text=gray] {PATCH /api/orders/:id};
+\end{tikzpicture}
+\caption{Системийн ерөнхий үйл ажиллагааны урсгал}
+\label{fig:flow}
+\end{figure}
+
+\section{Системийг ашиглах хэрэглэгчид}
+
+Систем нь 3 үндсэн хэрэглэгчийн үүрэгтэй:
+
+\begin{table}[htbp]
+\caption{Системийн хэрэглэгчдийн үүргийн тодорхойлолт}
+\label{tab:roles}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|L|}
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{Хэрэглэгч}} &
+\textcolor{white}{\textbf{Хандах нөөц}} &
+\textcolor{white}{\textbf{Боломжит үйлдэл}} \\ \hline
+Зочин (Guest) & Цэс, захиалга &
+  QR уншуулах, хоол сонгох, захиалга өгөх, статус харах \\ \hline
+\rowcolor{LightBlue}
+Кассир (Cashier) & Захиалга, тооцоо, нэгтгэл &
+  Захиалга харах, тооцоо баталгаажуулах, тайлан харах \\ \hline
+Менежер (Manager) & Бүх нөөц &
+  Цэс/ширээ/захиалга/тайлан бүрэн удирдлага \\ \hline
+\end{tabularx}
+\end{table}
+
+\section{Функционал шаардлага}
+
+\textbf{ФШ-01: QR Кодоор Цэс Нээх}\\
+Хэрэглэгч ширээн дэлгэц дээрх QR кодыг смартфоны камераар уншуулна. 3 секундын
+дотор тухайн ширээний мэдээлэл болон ресторан цэс нэн даруй нээгдэнэ. Цэс нь
+ангиллаар бүлэглэгдсэн, хоол бүрийн зураг, нэр, тайлбар, үнэ агуулсан байна.
+
+\textbf{ФШ-02: Захиалга Үүсгэх}\\
+Хэрэглэгч цэснээс хоол сонгон сагсанд нэмэх, хасах боломжтой байна. Хоол бүрд
+тусгай хүсэлт бичих боломжтой байна. ``Захиалга өгөх'' товч дарахад нийт дүн болон
+захиалгын мэдээллийн баталгаажуулалтын дэлгэц харагдана.
+
+\textbf{ФШ-03: Бодит Цагийн Мэдэгдэл (Зочин)}\\
+Захиалга баталгаажсан, бэлтгэж байна, бэлэн боллоо, хүргэгдсэн зэрэг статус
+өөрчлөлт бүрийг зочны дэлгэцэнд шуурхай харуулна.
+
+\textbf{ФШ-04: Бодит Цагийн Мэдэгдэл (Ажилтан)}\\
+Шинэ захиалга ирэхэд ажилтны дэлгэцэнд дохиолол болон мэдэгдэл харагдана.
+Захиалга нь ширээний нэр, хоолны жагсаалт, нийт дүн агуулсан байна.
+
+\textbf{ФШ-05: Захиалгын Статус Удирдлага}\\
+Захиалгын статусын шилжилт нь зөвхөн тодорхой дарааллаар явагдана:
+\[
+\texttt{pending} \to \texttt{confirmed} \to \texttt{preparing} \to
+\texttt{ready} \to \texttt{served} \to \texttt{paid}
+\]
+Статус өөрчлөлт бүр WebSocket-р зочны дэлгэцэнд шуурхай мэдэгдэнэ.
+
+\textbf{ФШ-06: Цэс Удирдлага}\\
+Менежер цэсийн ангилал болон хоолыг нэмэх, засварлах, устгах боломжтой байна.
+Хоолны байдал (байна/байхгүй) бодит цаг хугацаанд шинэчлэх боломжтой байна.
+
+\textbf{ФШ-07: Ширээ Удирдлага}\\
+Менежер ширээ нэмэх, засах, QR кодыг хэвлэх боломжтой байна. QR token
+автоматаар UUID форматаар үүснэ.
+
+\textbf{ФШ-08: Тайлан ба Нэгтгэл}\\
+Менежер/кассир өдрийн орлого, ширээ тус бүрийн захиалгын тоо, хамгийн эрэлттэй
+хоолны жагсаалтыг харах боломжтой байна. Тогтоосон хугацааны тайлан гаргана.
+
+\section{Функционал бус шаардлага}
+
+\subsection{Програм хангамжийн чанарын шаардлага}
+
+\begin{table}[htbp]
+\caption{Функционал бус шаардлагын хүснэгт}
+\label{tab:nfr}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|Y|}
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{Шаардлага}} &
+\textcolor{white}{\textbf{Хэмжүүр}} &
+\textcolor{white}{\textbf{Заалт}} \\ \hline
+Хурд & API хариу & 200 мс-ээс бага \\ \hline
+\rowcolor{LightBlue}
+Хурд & WS мессеж & 100 мс-ээс бага \\ \hline
+Хүртээмж & Uptime & 99.5\% буюу түүнээс дээш \\ \hline
+\rowcolor{LightBlue}
+Ачаалал & Нэгэн цагт & 200+ холболт \\ \hline
+Аюулгүй байдал & Нотлох & JWT + HTTPS/TLS \\ \hline
+\rowcolor{LightBlue}
+Хэрэглэхэд хялбар & SUS оноо & 80+ (Сайн) \\ \hline
+Дэлгэцэнд зохицох & Responsive & 320px -- 1920px \\ \hline
+\rowcolor{LightBlue}
+Сонсогдох & WCAG & 2.1 AA түвшин \\ \hline
+\end{tabularx}
+\end{table}
+
+\section{Ашигласан технологи, техникийн шаардлага}
+
+\subsection{Технологийн шаардлага}
+
+\textbf{Програм ажиллах үйлдлийн системийн сонголт}
+
+Сервер талд Ubuntu 22.04 LTS үйлдлийн системийг ашиглана. Ubuntu нь бүх нийтийн
+серверийн стандарт үйлдлийн систем бөгөөд Node.js-тэй нэвтрэлт сайтай.
+
+\textbf{Програм хөгжүүлэх хэлний сонголт}
+
+TypeScript 5.x хэлийг frontend болон backend аль аль дээр ашиглана. TypeScript нь
+JavaScript-ийн дээр статик шалгалтыг нэмж, том хэмжээний системийн засвар
+үйлчилгээг хялбарчилдаг.
+
+\textbf{Өгөгдлийн сангийн удирдах системийн сонголт}
+
+PostgreSQL 16 хувилбарыг сонгосон. ACID шаардлагыг бүрэн хангах, JSON/JSONB
+дэмжлэг, оролцогчдын дийлэнх мэддэг SQL синтакс зэрэг давуу талтай.
+
+\textbf{Баримт бичгийн боловсруулалтын системийн сонголт}
+
+React компонент дэлгэцийн зохиомжийг Figma-д зохиомжилсны дараа TypeScript дээр
+хэрэгжүүлсэн. Баримт бичгийг XeLaTeX дээр бичсэн.
+
+\subsection{Техникийн шаардлага}
+
+\textbf{Оролт гаралтын төхөөрөмжүүдийн шаардлага}
+
+\begin{table}[htbp]
+\caption{Техникийн доод шаардлага}
+\label{tab:hw}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|}
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{Бүрэлдэхүүн}} &
+\textcolor{white}{\textbf{Доод шаардлага}} \\ \hline
+Зочны төхөөрөмж & iOS 14+ / Android 10+, камер, Wi-Fi/4G \\ \hline
+\rowcolor{LightBlue}
+Ажилтны төхөөрөмж & 10 дюйм дэлгэцтэй таблет эсвэл 1366×768 дэлгэцтэй зөөврийн компьютер \\ \hline
+Сервер & 2 CPU core, 4 GB RAM, 50 GB SSD, 100 Mbps сүлжээ \\ \hline
+\rowcolor{LightBlue}
+Сүлжээ & Ресторан доторх Wi-Fi (-70 dBm буюу түүнээс дээш дохио) \\ \hline
+\end{tabularx}
+\end{table}
+
+\section{Юзкейс диаграм}
+
+Системийн гурван үндсэн хэрэглэгчийн юзкейс диаграмийг Зураг~\ref{fig:usecase} дэлгэрэнгүй харуулав.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  actor/.style={font=\small},
+  uc/.style={ellipse, draw, minimum width=3.2cm, minimum height=0.8cm,
+    align=center, font=\scriptsize},
+  sys/.style={rectangle, draw, dashed, minimum width=5cm,
+    minimum height=12cm, align=center},
+  arr/.style={-{Stealth}},
+  inc/.style={dashed, -{Stealth}}
+]
+
+% System boundary
+\draw[dashed] (0,-6.5) rectangle (9,6);
+\node[font=\small\bfseries] at (4.5,5.7) {Системийн хязгаар};
+
+% Actors
+\node[actor] (guest) at (-2.5, 2)  {\textbf{Зочин}};
+\node[actor] (cashier) at (-2.5,-2) {\textbf{Кассир}};
+\node[actor] (manager) at (11.5, 2) {\textbf{Менежер}};
+
+% Guest use cases
+\node[uc] (uc1) at (4,5)   {QR код уншуулах};
+\node[uc] (uc2) at (4,3.5) {Цэс харах};
+\node[uc] (uc3) at (4,2)   {Захиалга өгөх};
+\node[uc] (uc4) at (4,0.5) {Статус харах};
+
+% Cashier use cases
+\node[uc] (uc5) at (4,-1)  {Захиалга харах};
+\node[uc] (uc6) at (4,-2.5){Тооцоо баталгаажуулах};
+\node[uc] (uc7) at (4,-4)  {Нэгтгэл харах};
+
+% Manager use cases (right side also sees some)
+\node[uc] (uc8) at (4,-5.5){Цэс удирдах};
+
+% Associations
+\draw[arr] (guest) -- (uc1);
+\draw[arr] (guest) -- (uc2);
+\draw[arr] (guest) -- (uc3);
+\draw[arr] (guest) -- (uc4);
+\draw[arr] (cashier) -- (uc5);
+\draw[arr] (cashier) -- (uc6);
+\draw[arr] (cashier) -- (uc7);
+\draw[arr] (manager) -- (uc5);
+\draw[arr] (manager) -- (uc7);
+\draw[arr] (manager) -- (uc8);
+
+% Include
+\draw[inc] (uc3) -- node[right,font=\tiny]{<<include>>} (uc2);
+\end{tikzpicture}
+\caption{Системийн юзкейс диаграм}
+\label{fig:usecase}
+\end{figure}
+
+\section{Юзкейс диаграмын тодорхойлолт}
+
+\textbf{ЮК-01: QR код уншуулах}
+
+\begin{table}[htbp]
+\caption{ЮК-01 QR код уншуулах тодорхойлолт}
+\label{tab:uc01}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|}
+\hline
+\rowcolor{LightBlue}
+Юзкейсийн нэр & QR код уншуулах \\ \hline
+Оролцогч & Зочин \\ \hline
+\rowcolor{LightBlue}
+Өмнөх нөхцөл & Зочин ширээнд суусан байна \\ \hline
+Үндсэн урсгал & 1. Зочин камер нээнэ; 2. QR уншуулна; 3. Цэс харагдана \\ \hline
+\rowcolor{LightBlue}
+Дараах нөхцөл & Цэс харагдаж байна \\ \hline
+Онцгой тохиолдол & QR хүчингүй бол алдааны мэдэгдэл харагдана \\ \hline
+\end{tabularx}
+\end{table}
+
+\textbf{ЮК-02: Захиалга өгөх}
+
+\begin{table}[htbp]
+\caption{ЮК-02 Захиалга өгөх тодорхойлолт}
+\label{tab:uc02}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|}
+\hline
+\rowcolor{LightBlue}
+Юзкейсийн нэр & Захиалга өгөх \\ \hline
+Оролцогч & Зочин \\ \hline
+\rowcolor{LightBlue}
+Өмнөх нөхцөл & Цэс харагдаж байна \\ \hline
+Үндсэн урсгал & 1. Хоол сонгоно; 2. Сагсанд нэмнэ; 3. Захиалга батална; 4. Сервер хадгална; 5. Ажилтанд мэдэгдэнэ \\ \hline
+\rowcolor{LightBlue}
+Дараах нөхцөл & Захиалга pending статустай үүснэ \\ \hline
+Онцгой тохиолдол & Хоол байхгүй болсон бол мэдэгдэнэ \\ \hline
+\end{tabularx}
+\end{table}
+
+\textbf{ЮК-03: Тооцоо баталгаажуулах}
+
+\begin{table}[htbp]
+\caption{ЮК-03 Тооцоо баталгаажуулах тодорхойлолт}
+\label{tab:uc03}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|}
+\hline
+\rowcolor{LightBlue}
+Юзкейсийн нэр & Тооцоо баталгаажуулах \\ \hline
+Оролцогч & Кассир \\ \hline
+\rowcolor{LightBlue}
+Өмнөх нөхцөл & Захиалга served статустай \\ \hline
+Үндсэн урсгал & 1. Кассир захиалгыг сонгоно; 2. Нийт дүнг баталгаажуулна; 3. Paid болгоно \\ \hline
+\rowcolor{LightBlue}
+Дараах нөхцөл & Захиалга paid статусанд шилжинэ \\ \hline
+Онцгой тохиолдол & Захиалга already paid бол алдаа гарна \\ \hline
+\end{tabularx}
+\end{table}
+
+\textbf{ЮК-04: Цэс удирдах}
+
+\begin{table}[htbp]
+\caption{ЮК-04 Цэс удирдах тодорхойлолт}
+\label{tab:uc04}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|}
+\hline
+\rowcolor{LightBlue}
+Юзкейсийн нэр & Цэс удирдах \\ \hline
+Оролцогч & Менежер \\ \hline
+\rowcolor{LightBlue}
+Өмнөх нөхцөл & Менежер нэвтэрсэн байна \\ \hline
+Үндсэн урсгал & 1. Цэс хэсэгт нэвтэрнэ; 2. Хоол нэмэх/засах/устгах; 3. Зураг оруулах; 4. Хадгална \\ \hline
+\rowcolor{LightBlue}
+Дараах нөхцөл & Цэс шинэчлэгдэнэ, зочдод харагдана \\ \hline
+Онцгой тохиолдол & Давхардсан нэр бол алдаа гарна \\ \hline
+\end{tabularx}
+\end{table}
