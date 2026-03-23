@@ -24,3 +24,9 @@ id = "yaUqSeooPNF0ST9B9LGsB"
 uri = "file://diploma_latex_ШУТИС.zip"
 type = "unspecified"
 title = "ШУТИС Дипломын ажил — LaTeX бүрэн архив"
+
+[[outputs]]
+id = "hBmrnxAN5BEYia_9LYHbs"
+uri = "file://diploma_latex_MUST.zip"
+type = "unspecified"
+title = "Diploma LaTeX Project (MUST) — ASCII filename"
