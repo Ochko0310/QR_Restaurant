@@ -576,19 +576,32 @@ function CreateOrderModal({ onClose, onDone }: { onClose: () => void; onDone: ()
 }
 
 // ── Summary View (for cashier + manager) ──────────────────────────────────────
+function toLocalDatetimeValue(d: Date) {
+  return format(d, "yyyy-MM-dd'T'HH:mm");
+}
+
 function SummaryView() {
-  const today = format(new Date(), "yyyy-MM-dd");
-  const [from, setFrom] = useState(today);
-  const [to, setTo] = useState(today);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const [from, setFrom] = useState(toLocalDatetimeValue(startOfToday));
+  const [to, setTo] = useState(toLocalDatetimeValue(now));
   const { data: report, isLoading, refetch } = useGetReportSummary({ from, to });
   const { toast } = useToast();
 
-  const setRange = (days: number) => {
-    const d = new Date();
-    const start = new Date(d);
-    start.setDate(d.getDate() - days + 1);
-    setFrom(format(start, "yyyy-MM-dd"));
-    setTo(format(d, "yyyy-MM-dd"));
+  const setRange = (type: "today" | "7d" | "30d") => {
+    const end = new Date();
+    const start = new Date(end);
+    if (type === "today") {
+      start.setHours(0, 0, 0, 0);
+    } else if (type === "7d") {
+      start.setDate(end.getDate() - 6);
+      start.setHours(0, 0, 0, 0);
+    } else {
+      start.setDate(end.getDate() - 29);
+      start.setHours(0, 0, 0, 0);
+    }
+    setFrom(toLocalDatetimeValue(start));
+    setTo(toLocalDatetimeValue(end));
   };
 
   const printReport = () => {
@@ -599,15 +612,11 @@ function SummaryView() {
   body { font-family: 'Courier New', monospace; font-size: 12px; }
   h1 { font-size: 20px; text-align: center; margin-bottom: 4px; }
   .sub { text-align: center; color: #555; margin-bottom: 20px; font-size: 11px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-  th { background: #000; color: #fff; padding: 6px 10px; text-align: left; }
-  td { padding: 6px 10px; border-bottom: 1px solid #ddd; }
-  .big { font-size: 28px; font-weight: bold; text-align: center; margin: 16px 0; }
   .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #ccc; }
 </style></head><body>
 <h1>★ НЭГТГЭЛ ТАЙЛАН ★</h1>
-<div class="sub">${from} — ${to} · Хэвлэсэн: ${format(new Date(), "yyyy-MM-dd HH:mm")}</div>
-<div class="row"><span>Нийт захиалга:</span><span><b>${report?.totalOrders ?? 0}</b></span></div>
+<div class="sub">${from.replace("T", " ")} — ${to.replace("T", " ")} · Хэвлэсэн: ${format(new Date(), "yyyy-MM-dd HH:mm")}</div>
+<div class="row"><span>Төлөгдсөн захиалга:</span><span><b>${report?.totalOrders ?? 0}</b></span></div>
 <div class="row"><span>Нийт орлого:</span><span><b>₮${paidRevenue.toLocaleString()}</b></span></div>
 <div class="row"><span>Дундаж захиалгын дүн:</span><span><b>₮${Number(report?.averageOrderValue ?? 0).toFixed(0)}</b></span></div>
 </body></html>`;
@@ -631,28 +640,40 @@ function SummaryView() {
       {/* Quick range buttons */}
       <div className="flex gap-2 flex-wrap">
         {[
-          { label: "Өнөөдөр", days: 1 },
-          { label: "Сүүлийн 7 хоног", days: 7 },
-          { label: "Сүүлийн 30 хоног", days: 30 },
-        ].map(({ label, days }) => (
-          <button key={days} onClick={() => setRange(days)}
+          { label: "Өнөөдөр", type: "today" as const },
+          { label: "Сүүлийн 7 хоног", type: "7d" as const },
+          { label: "Сүүлийн 30 хоног", type: "30d" as const },
+        ].map(({ label, type }) => (
+          <button key={type} onClick={() => setRange(type)}
             className="px-3 py-1.5 rounded-xl text-sm font-medium border border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all">
             {label}
           </button>
         ))}
       </div>
 
-      {/* Date range inputs */}
+      {/* Datetime range inputs */}
       <div className="flex gap-3 items-end flex-wrap">
         <div>
-          <label className="text-xs text-muted-foreground block mb-1.5 flex items-center gap-1"><CalendarDays size={12} /> Эхлэх огноо</label>
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-            className="bg-card border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          <label className="text-xs text-muted-foreground block mb-1.5 flex items-center gap-1">
+            <CalendarDays size={12} /> Эхлэх цаг
+          </label>
+          <input
+            type="datetime-local"
+            value={from}
+            onChange={e => setFrom(e.target.value)}
+            className="bg-card border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary [color-scheme:dark]"
+          />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground block mb-1.5 flex items-center gap-1"><CalendarDays size={12} /> Дуусах огноо</label>
-          <input type="date" value={to} onChange={e => setTo(e.target.value)}
-            className="bg-card border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          <label className="text-xs text-muted-foreground block mb-1.5 flex items-center gap-1">
+            <CalendarDays size={12} /> Сүүлийн цаг
+          </label>
+          <input
+            type="datetime-local"
+            value={to}
+            onChange={e => setTo(e.target.value)}
+            className="bg-card border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary [color-scheme:dark]"
+          />
         </div>
         <Button size="sm" onClick={() => refetch()} disabled={isLoading}>
           {isLoading ? "Уншиж байна..." : "Харах"}
@@ -663,11 +684,11 @@ function SummaryView() {
       {report && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-card border border-border rounded-2xl p-5">
-            <p className="text-muted-foreground text-sm">Нийт захиалга</p>
+            <p className="text-muted-foreground text-sm">Төлөгдсөн захиалга</p>
             <p className="text-3xl font-bold mt-1">{report.totalOrders}</p>
           </div>
           <div className="bg-card border border-primary/20 rounded-2xl p-5 shadow-lg shadow-primary/5">
-            <p className="text-muted-foreground text-sm">Нийт орлого</p>
+            <p className="text-muted-foreground text-sm">Нийт орлого (төлөгдсөн)</p>
             <p className="text-3xl font-bold mt-1 text-primary">₮{Number(report.totalRevenue).toLocaleString()}</p>
           </div>
           <div className="bg-card border border-border rounded-2xl p-5">
@@ -675,6 +696,13 @@ function SummaryView() {
             <p className="text-3xl font-bold mt-1">₮{Number(report.averageOrderValue).toFixed(0)}</p>
           </div>
         </div>
+      )}
+
+      {/* Date range label */}
+      {report && (
+        <p className="text-xs text-muted-foreground">
+          {from.replace("T", " ")} — {to.replace("T", " ")} хугацааны төлөгдсөн захиалгуудын нэгтгэл
+        </p>
       )}
     </div>
   );

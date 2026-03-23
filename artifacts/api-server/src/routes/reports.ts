@@ -10,19 +10,13 @@ router.get("/reports/summary", requireAuth, async (req, res) => {
   try {
     const { from, to } = req.query as { from?: string; to?: string };
 
-    const conditions = [];
+    const conditions = [sql`${ordersTable.status} = 'paid'`];
     if (from) conditions.push(gte(ordersTable.createdAt, new Date(from)));
-    if (to) {
-      const toDate = new Date(to);
-      toDate.setHours(23, 59, 59, 999);
-      conditions.push(lte(ordersTable.createdAt, toDate));
-    }
+    if (to) conditions.push(lte(ordersTable.createdAt, new Date(to)));
 
-    const orders = conditions.length > 0
-      ? await db.select().from(ordersTable).where(and(...conditions))
-      : await db.select().from(ordersTable);
+    const orders = await db.select().from(ordersTable).where(and(...conditions));
 
-    const paidOrders = orders.filter((o) => o.status !== "cancelled");
+    const paidOrders = orders;
     const totalOrders = paidOrders.length;
     const totalRevenue = paidOrders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
     const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
