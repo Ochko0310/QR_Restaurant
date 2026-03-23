@@ -340,11 +340,13 @@ function CartDrawer({ token, onClose, onOrderSuccess }: { token: string, onClose
 }
 
 function OrdersSection({ token }: { token: string }) {
-  const { data: orders, isLoading } = useGetTableOrders(token);
+  const { data: allOrders, isLoading } = useGetTableOrders(token);
 
   if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading orders...</div>;
 
-  if (!orders || orders.length === 0) {
+  const orders = (allOrders ?? []).filter(o => o.status !== 'paid' && o.status !== 'cancelled');
+
+  if (orders.length === 0) {
     return (
       <div className="text-center p-12 mt-12 bg-card rounded-3xl border border-white/5 mx-4 shadow-xl">
         <ReceiptText size={48} className="mx-auto mb-4 text-primary/40" />

@@ -418,7 +418,6 @@ function AddItemForm({ categoryId, onClose, onDone }: {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [description, setDescription] = useState("");
-  const [prepTime, setPrepTime] = useState("10");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -430,7 +429,6 @@ function AddItemForm({ categoryId, onClose, onDone }: {
           name: name.trim(),
           price: parseFloat(price),
           description: description.trim() || undefined,
-          preparationTime: parseInt(prepTime) || 10,
           available: true,
         },
       },
@@ -449,41 +447,31 @@ function AddItemForm({ categoryId, onClose, onDone }: {
   return (
     <form onSubmit={handleSubmit} className="border-t border-border bg-muted/20 px-5 py-4 space-y-3">
       <p className="text-xs font-semibold text-primary uppercase tracking-wide">Шинэ хоол нэмэх</p>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2">
-          <input
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="Хоолны нэр *"
-            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-            required
-            autoFocus
-          />
-        </div>
+      <div className="space-y-2">
         <input
-          type="number"
-          value={price}
-          onChange={e => setPrice(e.target.value)}
-          placeholder="Үнэ (₮) *"
-          className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="Хоолны нэр *"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
           required
-          min="0"
-          step="100"
+          autoFocus
         />
-        <input
-          type="number"
-          value={prepTime}
-          onChange={e => setPrepTime(e.target.value)}
-          placeholder="Бэлдэх хугацаа (мин)"
-          className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-          min="1"
-        />
-        <div className="col-span-2">
+        <div className="flex gap-2">
+          <input
+            type="number"
+            value={price}
+            onChange={e => setPrice(e.target.value)}
+            placeholder="Үнэ (₮) *"
+            className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+            required
+            min="0"
+            step="100"
+          />
           <input
             value={description}
             onChange={e => setDescription(e.target.value)}
             placeholder="Тайлбар (заавал биш)"
-            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+            className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
           />
         </div>
       </div>
@@ -506,9 +494,14 @@ function MenuManagement() {
   const { toast } = useToast();
   const [newCatName, setNewCatName] = useState("");
   const [showNewCat, setShowNewCat] = useState(false);
-  const [addingItemToCat, setAddingItemToCat] = useState<number | null>(null);
+  const [selectedCatId, setSelectedCatId] = useState<number | null>(null);
+  const [addingItem, setAddingItem] = useState(false);
 
   if (isLoading) return <Spinner />;
+
+  const cats = categories ?? [];
+  const activeCatId = selectedCatId ?? cats[0]?.id ?? null;
+  const activeCat = cats.find(c => c.id === activeCatId);
 
   const refreshMenu = () => queryClient.invalidateQueries({ queryKey: getGetMenuCategoriesQueryKey() });
 
@@ -531,21 +524,30 @@ function MenuManagement() {
     e.preventDefault();
     createCat.mutate(
       { data: { name: newCatName } },
-      { onSuccess: () => { refreshMenu(); setNewCatName(""); setShowNewCat(false); toast({ title: "Ангилал нэмэгдлээ" }); } }
+      {
+        onSuccess: () => {
+          refreshMenu();
+          setNewCatName("");
+          setShowNewCat(false);
+          toast({ title: "Ангилал нэмэгдлээ" });
+        }
+      }
     );
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-0">
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold">Цэсний удирдлага</h2>
         <Button size="sm" variant="outline" onClick={() => setShowNewCat(!showNewCat)}>
           <Plus size={14} className="mr-1" /> Ангилал нэмэх
         </Button>
       </div>
 
+      {/* New category form */}
       {showNewCat && (
-        <form onSubmit={handleCreateCat} className="flex gap-2 bg-card p-3 rounded-xl border border-border">
+        <form onSubmit={handleCreateCat} className="flex gap-2 bg-card p-3 rounded-xl border border-border mb-4">
           <input
             value={newCatName}
             onChange={(e) => setNewCatName(e.target.value)}
@@ -559,29 +561,57 @@ function MenuManagement() {
         </form>
       )}
 
-      {categories?.map((cat) => (
-        <div key={cat.id} className="bg-card border border-border rounded-2xl overflow-hidden">
-          {/* Category header */}
-          <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-muted/30">
-            <div>
-              <h3 className="font-bold text-primary">{cat.name}</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">{cat.items?.length ?? 0} хоол</p>
-            </div>
+      {/* Category tab strip */}
+      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 mb-4">
+        {cats.map((cat) => (
+          <button
+            key={cat.id}
+            onClick={() => { setSelectedCatId(cat.id); setAddingItem(false); }}
+            className={`shrink-0 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
+              cat.id === activeCatId
+                ? "bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20"
+                : "bg-card text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
+            }`}
+          >
+            {cat.name}
+            <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
+              cat.id === activeCatId ? "bg-primary-foreground/20" : "bg-muted/50"
+            }`}>
+              {cat.items?.length ?? 0}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Selected category content */}
+      {activeCat && (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          {/* Category action bar */}
+          <div className="px-5 py-3 border-b border-border flex items-center justify-between bg-muted/20">
+            <p className="text-sm text-muted-foreground">{activeCat.items?.length ?? 0} хоол</p>
             <Button
               size="sm"
-              variant="outline"
-              className="border-primary/30 text-primary hover:bg-primary/10"
-              onClick={() => setAddingItemToCat(addingItemToCat === cat.id ? null : cat.id)}
+              className="bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20"
+              onClick={() => setAddingItem(!addingItem)}
             >
               <Plus size={14} className="mr-1" /> Хоол нэмэх
             </Button>
           </div>
 
+          {/* Add item inline form */}
+          {addingItem && (
+            <AddItemForm
+              categoryId={activeCat.id}
+              onClose={() => setAddingItem(false)}
+              onDone={() => { refreshMenu(); setAddingItem(false); }}
+            />
+          )}
+
           {/* Items list */}
-          {cat.items && cat.items.length > 0 ? (
+          {activeCat.items && activeCat.items.length > 0 ? (
             <div className="divide-y divide-border">
-              {cat.items.map((item) => (
-                <div key={item.id} className="px-5 py-3 flex items-center gap-4">
+              {activeCat.items.map((item) => (
+                <div key={item.id} className="px-5 py-3.5 flex items-center gap-4">
                   <div className="flex-1 min-w-0">
                     <p className={`font-medium text-sm ${!item.available ? "line-through text-muted-foreground" : ""}`}>
                       {item.name}
@@ -589,7 +619,7 @@ function MenuManagement() {
                     <div className="flex items-center gap-3 mt-0.5">
                       <span className="text-primary text-sm font-bold">₮{Number(item.price).toLocaleString()}</span>
                       {item.description && (
-                        <span className="text-xs text-muted-foreground truncate">{item.description}</span>
+                        <span className="text-xs text-muted-foreground truncate max-w-48">{item.description}</span>
                       )}
                     </div>
                   </div>
@@ -598,8 +628,8 @@ function MenuManagement() {
                       onClick={() => handleToggle(item.id, item.available)}
                       className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
                         item.available
-                          ? "bg-green-500/20 text-green-400 border-green-500/30 hover:bg-red-500/10"
-                          : "bg-red-500/20 text-red-400 border-red-500/30 hover:bg-green-500/10"
+                          ? "bg-green-500/20 text-green-400 border-green-500/30"
+                          : "bg-red-500/20 text-red-400 border-red-500/30"
                       }`}
                     >
                       {item.available ? "Нээлттэй" : "Хаалттай"}
@@ -614,22 +644,17 @@ function MenuManagement() {
                 </div>
               ))}
             </div>
-          ) : (
-            <div className="px-5 py-4 text-sm text-muted-foreground italic">
-              Энэ ангилалд хоол байхгүй байна. "Хоол нэмэх" дарна уу.
+          ) : !addingItem ? (
+            <div className="px-5 py-8 text-center text-muted-foreground text-sm">
+              <Utensils size={28} className="mx-auto mb-2 opacity-30" />
+              <p>Энэ ангилалд хоол байхгүй байна</p>
+              <button onClick={() => setAddingItem(true)} className="text-primary hover:underline mt-1 text-xs">
+                + Хоол нэмэх
+              </button>
             </div>
-          )}
-
-          {/* Add item form */}
-          {addingItemToCat === cat.id && (
-            <AddItemForm
-              categoryId={cat.id}
-              onClose={() => setAddingItemToCat(null)}
-              onDone={() => { refreshMenu(); setAddingItemToCat(null); }}
-            />
-          )}
+          ) : null}
         </div>
-      ))}
+      )}
     </div>
   );
 }
