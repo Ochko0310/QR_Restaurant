@@ -844,6 +844,125 @@ function AddItemForm({ categoryId, onClose, onDone }: {
   );
 }
 
+// ── Menu item edit form ────────────────────────────────────────────────────────
+function EditItemForm({ item, onClose, onDone }: {
+  item: { id: number; name: string; price: string; description?: string | null; imageUrl?: string | null; available: boolean };
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const updateItem = useUpdateMenuItem();
+  const { toast } = useToast();
+  const token = useStore((s) => s.token);
+  const [name, setName] = useState(item.name);
+  const [price, setPrice] = useState(String(Number(item.price)));
+  const [description, setDescription] = useState(item.description ?? "");
+  const [imageUrl, setImageUrl] = useState(item.imageUrl ?? "");
+  const [uploading, setUploading] = useState(false);
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const res = await fetch(`${base}/api/upload/image`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("upload failed");
+      const { url } = await res.json() as { url: string };
+      setImageUrl(url);
+    } catch {
+      toast({ title: "Зураг оруулж чадсангүй", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !price) return;
+    updateItem.mutate(
+      {
+        itemId: item.id,
+        data: {
+          name: name.trim(),
+          price: parseFloat(price),
+          description: description.trim() || undefined,
+          imageUrl: imageUrl || undefined,
+        },
+      },
+      {
+        onSuccess: () => { toast({ title: "Хадгалагдлаа" }); onDone(); },
+        onError: () => toast({ title: "Алдаа гарлаа", variant: "destructive" }),
+      }
+    );
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="border-t border-primary/20 bg-primary/5 px-5 py-4 space-y-3">
+      <p className="text-xs font-semibold text-primary uppercase tracking-wide flex items-center gap-1">
+        <Pencil size={11} /> Засварлах
+      </p>
+      <div className="space-y-2">
+        <input
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="Хоолны нэр *"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+          required
+          autoFocus
+        />
+        <div className="flex gap-2">
+          <input
+            type="number"
+            value={price}
+            onChange={e => setPrice(e.target.value)}
+            placeholder="Үнэ (₮) *"
+            className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+            required
+            min="0"
+            step="100"
+          />
+          <input
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="Тайлбар (заавал биш)"
+            className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+          />
+        </div>
+        {/* Image upload */}
+        <div className="flex items-center gap-3">
+          <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors
+            ${uploading ? "opacity-50 pointer-events-none" : "border-border hover:border-primary/50 hover:text-primary"} bg-background`}>
+            <Plus size={14} />
+            {uploading ? "Байршуулж байна..." : imageUrl ? "Зураг солих" : "Зураг оруулах"}
+            <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} disabled={uploading} />
+          </label>
+          {imageUrl && (
+            <div className="relative">
+              <img src={imageUrl} alt="preview" className="w-10 h-10 rounded-lg object-cover border border-border" />
+              <button type="button" onClick={() => setImageUrl("")}
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-destructive rounded-full flex items-center justify-center">
+                <X size={9} />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" className="flex-1" disabled={updateItem.isPending || uploading}>
+          {updateItem.isPending ? "Хадгалж байна..." : "Хадгалах"}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onClose}><X size={14} /></Button>
+      </div>
+    </form>
+  );
+}
+
 function MenuManagement() {
   const { data: categories, isLoading } = useGetMenuCategories();
   const updateItem = useUpdateMenuItem();
@@ -855,6 +974,7 @@ function MenuManagement() {
   const [showNewCat, setShowNewCat] = useState(false);
   const [selectedCatId, setSelectedCatId] = useState<number | null>(null);
   const [addingItem, setAddingItem] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<number | null>(null);
 
   if (isLoading) return <Spinner />;
 
@@ -970,36 +1090,57 @@ function MenuManagement() {
           {activeCat.items && activeCat.items.length > 0 ? (
             <div className="divide-y divide-border">
               {activeCat.items.map((item) => (
-                <div key={item.id} className="px-5 py-3.5 flex items-center gap-4">
-                  <div className="flex-1 min-w-0">
-                    <p className={`font-medium text-sm ${!item.available ? "line-through text-muted-foreground" : ""}`}>
-                      {item.name}
-                    </p>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      <span className="text-primary text-sm font-bold">₮{Number(item.price).toLocaleString()}</span>
-                      {item.description && (
-                        <span className="text-xs text-muted-foreground truncate max-w-48">{item.description}</span>
-                      )}
+                <div key={item.id}>
+                  <div className="px-5 py-3.5 flex items-center gap-4">
+                    {/* Thumbnail */}
+                    {item.imageUrl && (
+                      <img src={item.imageUrl} alt={item.name}
+                        className="w-10 h-10 rounded-lg object-cover border border-border shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-medium text-sm ${!item.available ? "line-through text-muted-foreground" : ""}`}>
+                        {item.name}
+                      </p>
+                      <div className="flex items-center gap-3 mt-0.5">
+                        <span className="text-primary text-sm font-bold">₮{Number(item.price).toLocaleString()}</span>
+                        {item.description && (
+                          <span className="text-xs text-muted-foreground truncate max-w-48">{item.description}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => handleToggle(item.id, item.available)}
+                        className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
+                          item.available
+                            ? "bg-green-500/20 text-green-400 border-green-500/30"
+                            : "bg-red-500/20 text-red-400 border-red-500/30"
+                        }`}
+                      >
+                        {item.available ? "Нээлттэй" : "Хаалттай"}
+                      </button>
+                      <button
+                        onClick={() => setEditingItemId(editingItemId === item.id ? null : item.id)}
+                        className={`p-1.5 transition-colors rounded ${editingItemId === item.id ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-primary"}`}
+                        title="Засварлах"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(item.id, item.name)}
+                        className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => handleToggle(item.id, item.available)}
-                      className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
-                        item.available
-                          ? "bg-green-500/20 text-green-400 border-green-500/30"
-                          : "bg-red-500/20 text-red-400 border-red-500/30"
-                      }`}
-                    >
-                      {item.available ? "Нээлттэй" : "Хаалттай"}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id, item.name)}
-                      className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                  {editingItemId === item.id && (
+                    <EditItemForm
+                      item={item}
+                      onClose={() => setEditingItemId(null)}
+                      onDone={() => { refreshMenu(); setEditingItemId(null); }}
+                    />
+                  )}
                 </div>
               ))}
             </div>
