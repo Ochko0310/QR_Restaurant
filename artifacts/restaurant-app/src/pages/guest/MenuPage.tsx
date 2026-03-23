@@ -207,7 +207,7 @@ function MenuItemCard({ item }: { item: MenuItem }) {
 
   return (
     <div className={`bg-card border border-white/5 rounded-2xl overflow-hidden flex shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ${!item.available ? 'opacity-50 grayscale' : ''}`}>
-      <div className="w-32 h-full flex-shrink-0 bg-muted">
+      <div className="w-28 h-28 flex-shrink-0 bg-muted">
         <img src={imgUrl} alt={item.name} className="w-full h-full object-cover" />
       </div>
       <div className="p-4 flex-1 flex flex-col justify-between">
