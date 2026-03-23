@@ -41,6 +41,32 @@ router.get("/tables/:tableId", requireAuth, async (req, res) => {
   }
 });
 
+router.patch("/tables/:tableId", requireAuth, async (req, res) => {
+  try {
+    const tableId = parseInt(req.params.tableId!);
+    const { name, capacity, status } = req.body as { name?: string; capacity?: number; status?: string };
+    const updates: Record<string, unknown> = {};
+    if (name !== undefined) updates.name = name;
+    if (capacity !== undefined) updates.capacity = capacity;
+    if (status !== undefined) updates.status = status;
+    const [table] = await db.update(tablesTable).set(updates).where(eq(tablesTable.id, tableId)).returning();
+    if (!table) { res.status(404).json({ error: "not_found" }); return; }
+    res.json(table);
+  } catch (err) {
+    res.status(500).json({ error: "server_error", message: String(err) });
+  }
+});
+
+router.delete("/tables/:tableId", requireAuth, async (req, res) => {
+  try {
+    const tableId = parseInt(req.params.tableId!);
+    await db.delete(tablesTable).where(eq(tablesTable.id, tableId));
+    res.status(204).send();
+  } catch (err) {
+    res.status(500).json({ error: "server_error", message: String(err) });
+  }
+});
+
 router.get("/tables/:tableId/qr", requireAuth, async (req, res) => {
   try {
     const tableId = parseInt(req.params.tableId!);

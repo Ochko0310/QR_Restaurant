@@ -5,9 +5,10 @@ import { useStaffRealtime } from "@/hooks/use-realtime";
 import {
   useGetOrders, useGetTables, useGetMenuCategories, useUpdateOrderStatus,
   useGetTableQr, useGetReportSummary, useUpdateMenuItem, useDeleteMenuItem,
-  useCreateMenuCategory, useCreateMenuItem,
-  getGetOrdersQueryKey, getGetMenuCategoriesQueryKey,
-  type Order,
+  useCreateMenuCategory, useCreateMenuItem, useCreateOrder, useCreateTable,
+  getGetOrdersQueryKey, getGetMenuCategoriesQueryKey, getGetTablesQueryKey,
+  customFetch,
+  type Order, type Table,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -17,11 +18,13 @@ import {
   ChefHat, LogOut, Utensils, ShoppingBag, BarChart3,
   QrCode, Clock, Printer, CheckCheck, X, Plus, Trash2,
   Wifi, WifiOff, TableProperties, Banknote, ArrowRight,
+  CalendarDays, Download, Pencil, Users, ClipboardList,
+  Minus, Search,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
-type Tab = "orders" | "menu" | "reports" | "tables";
+type Tab = "orders" | "summary" | "menu" | "reports" | "tables";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
@@ -212,6 +215,7 @@ export default function StaffDashboard() {
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode; roles: string[] }[] = [
     { id: "orders", label: "Захиалгууд", icon: <ShoppingBag size={16} />, roles: ["manager", "cashier", "waiter", "chef"] },
+    { id: "summary", label: "Нэгтгэл", icon: <ClipboardList size={16} />, roles: ["manager", "cashier"] },
     { id: "menu", label: "Цэс", icon: <Utensils size={16} />, roles: ["manager"] },
     { id: "reports", label: "Тайлан", icon: <BarChart3 size={16} />, roles: ["manager"] },
     { id: "tables", label: "Ширээ", icon: <TableProperties size={16} />, roles: ["manager"] },
@@ -263,6 +267,7 @@ export default function StaffDashboard() {
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
         {activeTab === "orders" && <OrdersView />}
+        {activeTab === "summary" && <SummaryView />}
         {activeTab === "menu" && <MenuManagement />}
         {activeTab === "reports" && <ReportsView />}
         {activeTab === "tables" && <TablesView />}
@@ -277,6 +282,7 @@ function OrdersView() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [payingOrder, setPayingOrder] = useState<Order | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const active = orders?.filter((o) => !["paid", "cancelled"].includes(o.status)) ?? [];
   const done = orders?.filter((o) => o.status === "paid").slice(0, 5) ?? [];
@@ -317,18 +323,28 @@ function OrdersView() {
         />
       )}
 
+      {createOpen && (
+        <CreateOrderModal
+          onClose={() => setCreateOpen(false)}
+          onDone={() => { setCreateOpen(false); queryClient.invalidateQueries({ queryKey: getGetOrdersQueryKey() }); }}
+        />
+      )}
+
       <div className="space-y-8">
-        {/* Flow banner */}
-        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground bg-card/50 border border-border rounded-xl px-4 py-3">
-          <span className="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full text-xs font-bold">Шинэ</span>
-          <ArrowRight size={12} />
-          <span>Баримт хэвлэж гал тогоонд өгнө</span>
-          <ArrowRight size={12} />
-          <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2 py-0.5 rounded-full text-xs font-bold">Гал тогоонд</span>
-          <ArrowRight size={12} />
-          <span>Хоол болсноор төлбөр авна</span>
-          <ArrowRight size={12} />
-          <span className="bg-gray-500/20 text-gray-400 border border-gray-500/30 px-2 py-0.5 rounded-full text-xs font-bold">Дууссан</span>
+        {/* Flow banner + create button */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground bg-card/50 border border-border rounded-xl px-4 py-3 flex-1">
+            <span className="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full text-xs font-bold">Шинэ</span>
+            <ArrowRight size={12} />
+            <span>Баримт хэвлэж гал тогоонд өгнө</span>
+            <ArrowRight size={12} />
+            <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2 py-0.5 rounded-full text-xs font-bold">Гал тогоонд</span>
+            <ArrowRight size={12} />
+            <span>Хоол болсноор төлбөр авна</span>
+          </div>
+          <Button onClick={() => setCreateOpen(true)} className="shrink-0">
+            <Plus size={15} className="mr-2" /> Захиалга үүсгэх
+          </Button>
         </div>
 
         {/* Active orders */}
@@ -404,6 +420,263 @@ function OrdersView() {
         )}
       </div>
     </>
+  );
+}
+
+// ── Create Order Modal (for cashier manual orders) ────────────────────────────
+function CreateOrderModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const { data: tables } = useGetTables();
+  const { data: categories } = useGetMenuCategories();
+  const createOrder = useCreateOrder();
+  const { toast } = useToast();
+  const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
+  const [activeCatId, setActiveCatId] = useState<number | null>(null);
+  const [cart, setCart] = useState<Record<number, { name: string; price: number; qty: number }>>({});
+  const [search, setSearch] = useState("");
+
+  const cats = categories ?? [];
+  const currentCatId = activeCatId ?? cats[0]?.id ?? null;
+  const currentCat = cats.find(c => c.id === currentCatId);
+  const selectedTable = tables?.find(t => t.id === selectedTableId);
+
+  const filteredItems = search.trim()
+    ? cats.flatMap(c => c.items ?? []).filter(i => i.available && i.name.toLowerCase().includes(search.toLowerCase()))
+    : (currentCat?.items ?? []).filter(i => i.available !== false);
+
+  const addToCart = (item: { id: number; name: string; price: string | number }) => {
+    setCart(prev => ({
+      ...prev,
+      [item.id]: { name: item.name, price: Number(item.price), qty: (prev[item.id]?.qty ?? 0) + 1 },
+    }));
+  };
+
+  const updateQty = (itemId: number, delta: number) => {
+    setCart(prev => {
+      const cur = prev[itemId];
+      if (!cur) return prev;
+      const newQty = cur.qty + delta;
+      if (newQty <= 0) { const next = { ...prev }; delete next[itemId]; return next; }
+      return { ...prev, [itemId]: { ...cur, qty: newQty } };
+    });
+  };
+
+  const cartItems = Object.entries(cart).map(([id, v]) => ({ id: Number(id), ...v }));
+  const total = cartItems.reduce((s, i) => s + i.price * i.qty, 0);
+
+  const handleSubmit = () => {
+    if (!selectedTable?.qrToken || cartItems.length === 0) return;
+    createOrder.mutate(
+      { data: { tableToken: selectedTable.qrToken, items: cartItems.map(i => ({ menuItemId: i.id, quantity: i.qty })) } },
+      {
+        onSuccess: () => { toast({ title: "Захиалга амжилттай үүслээ" }); onDone(); },
+        onError: () => toast({ title: "Алдаа гарлаа", variant: "destructive" }),
+      }
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+          <h2 className="font-bold text-lg">Захиалга үүсгэх</h2>
+          <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted/50"><X size={18} /></button>
+        </div>
+
+        {/* Table selector */}
+        <div className="px-6 py-3 border-b border-border shrink-0">
+          <label className="text-xs text-muted-foreground mb-2 block">Ширээ сонгох *</label>
+          <div className="flex flex-wrap gap-2">
+            {tables?.map(t => (
+              <button key={t.id} onClick={() => setSelectedTableId(t.id)}
+                className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition-all ${
+                  t.id === selectedTableId ? "bg-primary text-primary-foreground border-primary" : "bg-muted/30 border-border text-muted-foreground hover:border-primary/40"
+                }`}>
+                {t.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left: menu browser */}
+          <div className="flex-1 flex flex-col overflow-hidden border-r border-border">
+            {/* Search */}
+            <div className="px-4 py-2 border-b border-border shrink-0">
+              <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-1.5">
+                <Search size={14} className="text-muted-foreground" />
+                <input value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Хоол хайх..."
+                  className="flex-1 bg-transparent text-sm focus:outline-none" />
+              </div>
+            </div>
+            {/* Category tabs */}
+            {!search && (
+              <div className="flex gap-1 overflow-x-auto px-4 py-2 border-b border-border shrink-0">
+                {cats.map(cat => (
+                  <button key={cat.id} onClick={() => setActiveCatId(cat.id)}
+                    className={`shrink-0 px-3 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                      cat.id === currentCatId ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary/30"
+                    }`}>{cat.name}</button>
+                ))}
+              </div>
+            )}
+            {/* Items */}
+            <div className="flex-1 overflow-y-auto">
+              {filteredItems.map(item => (
+                <div key={item.id} className="flex items-center justify-between px-4 py-2.5 border-b border-border/50 hover:bg-muted/20 transition-colors">
+                  <div>
+                    <p className="text-sm font-medium">{item.name}</p>
+                    <p className="text-xs text-primary">₮{Number(item.price).toLocaleString()}</p>
+                  </div>
+                  <button onClick={() => addToCart(item)}
+                    className="w-7 h-7 rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground flex items-center justify-center transition-colors">
+                    <Plus size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Right: cart */}
+          <div className="w-56 flex flex-col shrink-0">
+            <div className="px-4 py-3 border-b border-border text-sm font-semibold text-muted-foreground shrink-0">Сагс</div>
+            <div className="flex-1 overflow-y-auto">
+              {cartItems.length === 0 ? (
+                <div className="p-4 text-center text-xs text-muted-foreground">Хоол нэмнэ үү</div>
+              ) : cartItems.map(item => (
+                <div key={item.id} className="px-4 py-2.5 border-b border-border/50">
+                  <p className="text-xs font-medium leading-tight mb-1.5">{item.name}</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => updateQty(item.id, -1)} className="w-5 h-5 rounded bg-muted flex items-center justify-center"><Minus size={10} /></button>
+                      <span className="text-xs font-bold w-4 text-center">{item.qty}</span>
+                      <button onClick={() => updateQty(item.id, 1)} className="w-5 h-5 rounded bg-muted flex items-center justify-center"><Plus size={10} /></button>
+                    </div>
+                    <span className="text-xs text-primary font-bold">₮{(item.price * item.qty).toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Total */}
+            <div className="px-4 py-3 border-t border-border shrink-0">
+              <div className="flex justify-between text-sm mb-3">
+                <span className="text-muted-foreground">Нийт</span>
+                <span className="font-bold text-primary">₮{total.toLocaleString()}</span>
+              </div>
+              <Button className="w-full" disabled={!selectedTable || cartItems.length === 0 || createOrder.isPending} onClick={handleSubmit}>
+                {createOrder.isPending ? "Үүсгэж байна..." : "Захиалах"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Summary View (for cashier + manager) ──────────────────────────────────────
+function SummaryView() {
+  const today = format(new Date(), "yyyy-MM-dd");
+  const [from, setFrom] = useState(today);
+  const [to, setTo] = useState(today);
+  const { data: report, isLoading, refetch } = useGetReportSummary({ from, to });
+  const { toast } = useToast();
+
+  const setRange = (days: number) => {
+    const d = new Date();
+    const start = new Date(d);
+    start.setDate(d.getDate() - days + 1);
+    setFrom(format(start, "yyyy-MM-dd"));
+    setTo(format(d, "yyyy-MM-dd"));
+  };
+
+  const printReport = () => {
+    const paidRevenue = Number(report?.totalRevenue ?? 0);
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8" /><title>Нэгтгэл тайлан</title>
+<style>
+  @page { size: A4; margin: 15mm; }
+  body { font-family: 'Courier New', monospace; font-size: 12px; }
+  h1 { font-size: 20px; text-align: center; margin-bottom: 4px; }
+  .sub { text-align: center; color: #555; margin-bottom: 20px; font-size: 11px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  th { background: #000; color: #fff; padding: 6px 10px; text-align: left; }
+  td { padding: 6px 10px; border-bottom: 1px solid #ddd; }
+  .big { font-size: 28px; font-weight: bold; text-align: center; margin: 16px 0; }
+  .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #ccc; }
+</style></head><body>
+<h1>★ НЭГТГЭЛ ТАЙЛАН ★</h1>
+<div class="sub">${from} — ${to} · Хэвлэсэн: ${format(new Date(), "yyyy-MM-dd HH:mm")}</div>
+<div class="row"><span>Нийт захиалга:</span><span><b>${report?.totalOrders ?? 0}</b></span></div>
+<div class="row"><span>Нийт орлого:</span><span><b>₮${paidRevenue.toLocaleString()}</b></span></div>
+<div class="row"><span>Дундаж захиалгын дүн:</span><span><b>₮${Number(report?.averageOrderValue ?? 0).toFixed(0)}</b></span></div>
+</body></html>`;
+    const win = window.open("", "_blank", "width=800,height=600");
+    if (!win) { toast({ title: "Pop-up хаагдсан байна" }); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); win.close(); }, 300);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="text-xl font-bold">Орлогын нэгтгэл</h2>
+        <Button variant="outline" size="sm" onClick={printReport} disabled={!report}>
+          <Printer size={14} className="mr-2" /> Хэвлэх
+        </Button>
+      </div>
+
+      {/* Quick range buttons */}
+      <div className="flex gap-2 flex-wrap">
+        {[
+          { label: "Өнөөдөр", days: 1 },
+          { label: "Сүүлийн 7 хоног", days: 7 },
+          { label: "Сүүлийн 30 хоног", days: 30 },
+        ].map(({ label, days }) => (
+          <button key={days} onClick={() => setRange(days)}
+            className="px-3 py-1.5 rounded-xl text-sm font-medium border border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all">
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Date range inputs */}
+      <div className="flex gap-3 items-end flex-wrap">
+        <div>
+          <label className="text-xs text-muted-foreground block mb-1.5 flex items-center gap-1"><CalendarDays size={12} /> Эхлэх огноо</label>
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+            className="bg-card border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground block mb-1.5 flex items-center gap-1"><CalendarDays size={12} /> Дуусах огноо</label>
+          <input type="date" value={to} onChange={e => setTo(e.target.value)}
+            className="bg-card border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <Button size="sm" onClick={() => refetch()} disabled={isLoading}>
+          {isLoading ? "Уншиж байна..." : "Харах"}
+        </Button>
+      </div>
+
+      {/* Stats */}
+      {report && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-card border border-border rounded-2xl p-5">
+            <p className="text-muted-foreground text-sm">Нийт захиалга</p>
+            <p className="text-3xl font-bold mt-1">{report.totalOrders}</p>
+          </div>
+          <div className="bg-card border border-primary/20 rounded-2xl p-5 shadow-lg shadow-primary/5">
+            <p className="text-muted-foreground text-sm">Нийт орлого</p>
+            <p className="text-3xl font-bold mt-1 text-primary">₮{Number(report.totalRevenue).toLocaleString()}</p>
+          </div>
+          <div className="bg-card border border-border rounded-2xl p-5">
+            <p className="text-muted-foreground text-sm">Дундаж захиалга</p>
+            <p className="text-3xl font-bold mt-1">₮{Number(report.averageOrderValue).toFixed(0)}</p>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -714,8 +987,17 @@ function ReportsView() {
 
 function TablesView() {
   const { data: tables, isLoading } = useGetTables();
+  const createTable = useCreateTable();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [qrTableId, setQrTableId] = useState<number | null>(null);
   const { data: qrData } = useGetTableQr(qrTableId ?? 0, { query: { enabled: !!qrTableId } });
+  const [showAdd, setShowAdd] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addCapacity, setAddCapacity] = useState("4");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editCapacity, setEditCapacity] = useState("");
 
   if (isLoading) return <Spinner />;
 
@@ -726,36 +1008,149 @@ function TablesView() {
   };
   const statusLabel: Record<string, string> = {
     available: "Чөлөөтэй",
-    occupied: "Хэрэглэгдэж байна",
+    occupied: "Эзлэгдсэн",
     reserved: "Захиалгатай",
+  };
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: getGetTablesQueryKey() });
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    const nextNum = (tables?.length ?? 0) + 1;
+    createTable.mutate(
+      { data: { number: nextNum, name: addName.trim(), capacity: parseInt(addCapacity) || 4 } },
+      {
+        onSuccess: () => { refresh(); setShowAdd(false); setAddName(""); setAddCapacity("4"); toast({ title: `"${addName}" ширээ нэмэгдлээ. QR автоматаар үүслээ.` }); },
+        onError: () => toast({ title: "Алдаа гарлаа", variant: "destructive" }),
+      }
+    );
+  };
+
+  const handleEdit = async (tableId: number) => {
+    await customFetch(`/api/tables/${tableId}`, { method: "PATCH", body: JSON.stringify({ name: editName.trim(), capacity: parseInt(editCapacity) || 4 }) });
+    refresh();
+    setEditingId(null);
+    toast({ title: "Ширээний мэдээлэл шинэчлэгдлээ" });
+  };
+
+  const handleDelete = async (table: Table) => {
+    if (!confirm(`"${table.name}" устгах уу? Ширээний бүх захиалга устана.`)) return;
+    await customFetch(`/api/tables/${table.id}`, { method: "DELETE" });
+    refresh();
+    toast({ title: "Устгасан" });
+  };
+
+  const printQR = (table: Table, url: string) => {
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>QR — ${table.name}</title>
+<style>
+  @page { size: 100mm 120mm; margin: 5mm; }
+  body { font-family: sans-serif; text-align: center; padding: 8px; }
+  h2 { font-size: 22px; margin: 8px 0 4px; }
+  p { font-size: 11px; color: #555; word-break: break-all; margin: 4px 0; }
+  .sub { font-size: 13px; color: #333; margin-top: 2px; }
+  svg { margin: 10px auto; display: block; }
+</style></head><body>
+<h2>${table.name}</h2>
+<div class="sub">${table.capacity} хүний суудал</div>
+<div id="qr"></div>
+<p>${url}</p>
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<script>QRCode.toCanvas(document.createElement('canvas'),${JSON.stringify(url)},{width:200,margin:2},function(err,canvas){if(!err){document.getElementById('qr').appendChild(canvas);}setTimeout(()=>{window.print();window.close();},600);});</script>
+</body></html>`;
+    const win = window.open("", "_blank", "width=500,height=600");
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
   };
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-bold">Ширээний удирдлага</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold">Ширээний удирдлага</h2>
+        <Button size="sm" onClick={() => setShowAdd(!showAdd)}>
+          <Plus size={14} className="mr-1" /> Ширээ нэмэх
+        </Button>
+      </div>
+
+      {/* Add form */}
+      {showAdd && (
+        <form onSubmit={handleAdd} className="flex gap-3 items-end bg-card p-4 rounded-2xl border border-border flex-wrap">
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1.5">Ширээний нэр *</label>
+            <input value={addName} onChange={e => setAddName(e.target.value)} placeholder="Жишээ: 1-р ширээ"
+              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary w-40"
+              required autoFocus />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1.5">Суудлын тоо</label>
+            <input type="number" value={addCapacity} onChange={e => setAddCapacity(e.target.value)} min="1" max="20"
+              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary w-20" />
+          </div>
+          <Button type="submit" size="sm" disabled={createTable.isPending}>Нэмэх</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setShowAdd(false)}><X size={14} /></Button>
+        </form>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
         {tables?.map((table) => (
           <div key={table.id} className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-3">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-bold">{table.name}</p>
-                <p className="text-xs text-muted-foreground">{table.capacity} хүн</p>
-              </div>
-              <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${statusColor[table.status]}`}>
-                {statusLabel[table.status]}
-              </span>
-            </div>
-            <Button size="sm" variant="outline" className="w-full"
-              onClick={() => setQrTableId(qrTableId === table.id ? null : table.id)}>
-              <QrCode size={14} className="mr-1" /> QR код харах
-            </Button>
-            {qrTableId === table.id && qrData && (
-              <div className="flex flex-col items-center gap-2 pt-1">
-                <div className="bg-white p-3 rounded-xl">
-                  <QRCodeSVG value={qrData.url} size={110} />
+            {/* Table info or edit form */}
+            {editingId === table.id ? (
+              <div className="space-y-2">
+                <input value={editName} onChange={e => setEditName(e.target.value)}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary"
+                  autoFocus />
+                <div className="flex gap-2">
+                  <input type="number" value={editCapacity} onChange={e => setEditCapacity(e.target.value)} min="1"
+                    className="w-20 bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary" />
+                  <Button size="sm" className="flex-1" onClick={() => handleEdit(table.id)}>Хадгалах</Button>
+                  <button onClick={() => setEditingId(null)} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={14} /></button>
                 </div>
-                <p className="text-[10px] text-muted-foreground text-center break-all leading-relaxed">{qrData.url}</p>
               </div>
+            ) : (
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="font-bold">{table.name}</p>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5"><Users size={10} /> {table.capacity} хүн</p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${statusColor[table.status ?? "available"]}`}>
+                    {statusLabel[table.status ?? "available"]}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {editingId !== table.id && (
+              <>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="flex-1"
+                    onClick={() => { setEditingId(table.id); setEditName(table.name); setEditCapacity(String(table.capacity)); }}>
+                    <Pencil size={12} className="mr-1" /> Засах
+                  </Button>
+                  <button onClick={() => handleDelete(table)}
+                    className="px-2 py-1 rounded-lg border border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+
+                <Button size="sm" variant="outline" className="w-full"
+                  onClick={() => setQrTableId(qrTableId === table.id ? null : table.id)}>
+                  <QrCode size={14} className="mr-1" /> QR код {qrTableId === table.id ? "хаах" : "харах"}
+                </Button>
+
+                {qrTableId === table.id && qrData && (
+                  <div className="flex flex-col items-center gap-2 pt-1">
+                    <div className="bg-white p-3 rounded-xl">
+                      <QRCodeSVG value={qrData.url} size={110} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground text-center break-all leading-relaxed">{qrData.url}</p>
+                    <Button size="sm" variant="outline" className="w-full" onClick={() => printQR(table, qrData.url)}>
+                      <Printer size={12} className="mr-1" /> QR хэвлэх
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         ))}

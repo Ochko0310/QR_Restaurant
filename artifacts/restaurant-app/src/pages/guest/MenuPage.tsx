@@ -35,9 +35,9 @@ export default function GuestMenuPage() {
           <div className="w-24 h-24 bg-card rounded-3xl mx-auto flex items-center justify-center shadow-2xl shadow-primary/10 border border-border">
             <QrCode size={48} className="text-primary" />
           </div>
-          <h1 className="text-3xl font-display font-bold">Welcome to L'Aura</h1>
+          <h1 className="text-3xl font-display font-bold">L'Aura-д тавтай морилно уу</h1>
           <p className="text-muted-foreground text-lg">
-            Please scan the QR code located on your table to view our digital menu and place your order.
+            Захиалга өгөхийн тулд ширээн дээрх QR кодыг уншуулна уу.
           </p>
         </div>
       </div>
@@ -61,8 +61,8 @@ function GuestMenuContent({ token }: { token: string }) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6 text-center">
         <div className="max-w-md space-y-4">
-          <h1 className="text-2xl font-display font-bold text-destructive">Invalid Session</h1>
-          <p className="text-muted-foreground">This QR code session has expired or is invalid. Please ask your waiter for assistance.</p>
+          <h1 className="text-2xl font-display font-bold text-destructive">Хүчингүй QR код</h1>
+          <p className="text-muted-foreground">QR кодын сесс хүчингүй болсон байна. Үйлчлэгчдэд хандана уу.</p>
         </div>
       </div>
     );
@@ -88,13 +88,13 @@ function GuestMenuContent({ token }: { token: string }) {
               onClick={() => setView('menu')}
               className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-all ${view === 'menu' ? 'bg-primary text-white shadow-md' : 'text-muted-foreground hover:text-white'}`}
             >
-              Menu
+              Цэс
             </button>
             <button 
               onClick={() => setView('orders')}
               className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${view === 'orders' ? 'bg-primary text-white shadow-md' : 'text-muted-foreground hover:text-white'}`}
             >
-              Orders {connected && <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>}
+              Захиалга {connected && <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>}
             </button>
           </div>
         </div>
@@ -144,8 +144,8 @@ function MenuSection() {
         <img src={`${import.meta.env.BASE_URL}images/hero-bg.png`} alt="Restaurant ambiance" className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
         <div className="absolute bottom-5 left-6 pr-6">
-          <h2 className="text-2xl md:text-3xl font-display font-bold text-white mb-1">Savor the Moment</h2>
-          <p className="text-white/70 text-sm max-w-md hidden md:block">Discover our chef's carefully curated selection of contemporary dishes.</p>
+          <h2 className="text-2xl md:text-3xl font-display font-bold text-white mb-1">Амтыг мэдрэ</h2>
+          <p className="text-white/70 text-sm max-w-md hidden md:block">Манай тогооч нарын гаргалгаатай хоол сонголтыг үзэгтүн.</p>
         </div>
       </div>
 
@@ -199,8 +199,8 @@ function MenuItemCard({ item }: { item: MenuItem }) {
   const handleAdd = () => {
     addToCart(item, 1);
     toast({
-      title: "Added to cart",
-      description: `${item.name} added to your order.`,
+      title: "Сагсанд нэмэгдлээ",
+      description: `${item.name} захиалганд нэмэгдлээ`,
       duration: 2000,
     });
   };
@@ -221,7 +221,7 @@ function MenuItemCard({ item }: { item: MenuItem }) {
         
         <div className="mt-4 flex items-center justify-between">
           <div className="flex items-center text-xs text-muted-foreground gap-1">
-            <Clock size={12} /> {item.preparationTime || 15} mins
+            <Clock size={12} /> {item.preparationTime || 15} мин
           </div>
           <Button 
             size="sm" 
@@ -229,7 +229,7 @@ function MenuItemCard({ item }: { item: MenuItem }) {
             disabled={!item.available}
             onClick={handleAdd}
           >
-            {item.available ? <><Plus size={14} className="mr-1" /> Add</> : "Sold Out"}
+            {item.available ? <><Plus size={14} className="mr-1" /> Нэмэх</> : "Дуусчээ"}
           </Button>
         </div>
       </div>
@@ -261,7 +261,7 @@ function CartFloatButton({ onClick }: { onClick: () => void }) {
               {count}
             </span>
           </div>
-          <span className="font-bold">View Order</span>
+          <span className="font-bold">Захиалга харах</span>
         </div>
         <span className="font-bold text-lg">₮{total.toLocaleString()}</span>
       </button>
@@ -287,11 +287,11 @@ function CartDrawer({ token, onClose, onOrderSuccess }: { token: string, onClose
       onSuccess: () => {
         clearCart();
         queryClient.invalidateQueries({ queryKey: getGetTableOrdersQueryKey(token) });
-        toast({ title: "Order Placed!", description: "Your order has been sent to the kitchen." });
+        toast({ title: "Захиалга явлаа!", description: "Таны захиалга гал тогоонд илгээгдлээ." });
         onOrderSuccess();
       },
       onError: () => {
-        toast({ title: "Error", description: "Failed to place order. Please try again.", variant: "destructive" });
+        toast({ title: "Алдаа", description: "Захиалга явуулж чадсангүй. Дахин оролдоно уу.", variant: "destructive" });
       }
     });
   };
@@ -309,7 +309,7 @@ function CartDrawer({ token, onClose, onOrderSuccess }: { token: string, onClose
         className="fixed bottom-0 left-0 right-0 md:left-auto md:w-96 md:top-0 md:bottom-0 bg-card z-50 flex flex-col shadow-2xl md:rounded-l-3xl rounded-t-3xl border-t md:border-l border-white/10"
       >
         <div className="p-5 border-b border-white/5 flex items-center justify-between bg-background/50">
-          <h2 className="text-xl font-display font-bold">Your Order</h2>
+          <h2 className="text-xl font-display font-bold">Таны захиалга</h2>
           <button onClick={onClose} className="p-2 bg-white/5 rounded-full hover:bg-white/10 transition-colors">
             <X size={20} />
           </button>
@@ -319,7 +319,7 @@ function CartDrawer({ token, onClose, onOrderSuccess }: { token: string, onClose
           {cart.length === 0 ? (
             <div className="text-center text-muted-foreground mt-10">
               <ShoppingBag size={48} className="mx-auto mb-4 opacity-20" />
-              <p>Your cart is empty.</p>
+              <p>Сагс хоосон байна.</p>
             </div>
           ) : (
             cart.map(item => (
@@ -338,7 +338,7 @@ function CartDrawer({ token, onClose, onOrderSuccess }: { token: string, onClose
                       <Plus size={14} />
                     </button>
                   </div>
-                  <button onClick={() => removeFromCart(item.menuItem.id)} className="text-xs text-destructive underline decoration-dotted underline-offset-2">Remove</button>
+                  <button onClick={() => removeFromCart(item.menuItem.id)} className="text-xs text-destructive underline decoration-dotted underline-offset-2">Хасах</button>
                 </div>
               </div>
             ))
@@ -348,7 +348,7 @@ function CartDrawer({ token, onClose, onOrderSuccess }: { token: string, onClose
         {cart.length > 0 && (
           <div className="p-5 bg-background border-t border-white/5">
             <div className="flex justify-between items-center mb-4">
-              <span className="text-muted-foreground">Total to pay</span>
+              <span className="text-muted-foreground">Нийт төлбөр</span>
               <span className="text-2xl font-bold text-foreground">₮{total.toLocaleString()}</span>
             </div>
             <Button 
@@ -357,7 +357,7 @@ function CartDrawer({ token, onClose, onOrderSuccess }: { token: string, onClose
               className="w-full h-14 rounded-xl text-lg font-bold shadow-xl shadow-primary/20 relative overflow-hidden group"
             >
               <span className="relative z-10 flex items-center gap-2">
-                {createOrder.isPending ? "Sending..." : "Place Order to Kitchen"} <ArrowRight size={18} />
+                {createOrder.isPending ? "Илгээж байна..." : "Гал тогоонд захиалах"} <ArrowRight size={18} />
               </span>
               <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform" />
             </Button>
@@ -371,7 +371,7 @@ function CartDrawer({ token, onClose, onOrderSuccess }: { token: string, onClose
 function OrdersSection({ token }: { token: string }) {
   const { data: allOrders, isLoading } = useGetTableOrders(token);
 
-  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading orders...</div>;
+  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Ачааллаж байна...</div>;
 
   const orders = (allOrders ?? []).filter(o => o.status !== 'paid' && o.status !== 'cancelled');
 
@@ -379,8 +379,8 @@ function OrdersSection({ token }: { token: string }) {
     return (
       <div className="text-center p-12 mt-12 bg-card rounded-3xl border border-white/5 mx-4 shadow-xl">
         <ReceiptText size={48} className="mx-auto mb-4 text-primary/40" />
-        <h3 className="text-xl font-display font-bold mb-2">No active orders</h3>
-        <p className="text-muted-foreground">Browse our menu to place your first order.</p>
+        <h3 className="text-xl font-display font-bold mb-2">Идэвхтэй захиалга байхгүй</h3>
+        <p className="text-muted-foreground">Цэсийг үзэж эхний захиалгаа өгнө үү.</p>
       </div>
     );
   }
