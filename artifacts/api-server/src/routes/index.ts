@@ -6,6 +6,7 @@ import tablesRouter from "./tables";
 import menuRouter from "./menu";
 import ordersRouter from "./orders";
 import reportsRouter from "./reports";
+import uploadRouter from "./upload";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(tablesRouter);
 router.use(menuRouter);
 router.use(ordersRouter);
 router.use(reportsRouter);
+router.use(uploadRouter);
 
 export default router;

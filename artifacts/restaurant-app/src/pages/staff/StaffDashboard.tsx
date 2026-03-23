@@ -716,9 +716,35 @@ function AddItemForm({ categoryId, onClose, onDone }: {
 }) {
   const createItem = useCreateMenuItem();
   const { toast } = useToast();
+  const token = useStore((s) => s.token);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [description, setDescription] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [uploading, setUploading] = useState(false);
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const res = await fetch(`${base}/api/upload/image`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("upload failed");
+      const { url } = await res.json() as { url: string };
+      setImageUrl(url);
+    } catch {
+      toast({ title: "Зураг оруулж чадсангүй", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -730,6 +756,7 @@ function AddItemForm({ categoryId, onClose, onDone }: {
           name: name.trim(),
           price: parseFloat(price),
           description: description.trim() || undefined,
+          imageUrl: imageUrl || undefined,
           available: true,
         },
       },
@@ -775,9 +802,40 @@ function AddItemForm({ categoryId, onClose, onDone }: {
             className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
           />
         </div>
+
+        {/* Image upload */}
+        <div className="flex items-center gap-3">
+          <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors
+            ${uploading ? "opacity-50 pointer-events-none" : "border-border hover:border-primary/50 hover:text-primary"} bg-background`}>
+            <Plus size={14} />
+            {uploading ? "Байршуулж байна..." : imageUrl ? "Зураг солих" : "Зураг оруулах"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageChange}
+              disabled={uploading}
+            />
+          </label>
+          {imageUrl && (
+            <div className="relative flex items-center gap-2">
+              <img src={imageUrl} alt="preview" className="w-10 h-10 rounded-lg object-cover border border-border" />
+              <button
+                type="button"
+                onClick={() => setImageUrl("")}
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-destructive rounded-full flex items-center justify-center"
+              >
+                <X size={9} />
+              </button>
+            </div>
+          )}
+          {!imageUrl && !uploading && (
+            <span className="text-xs text-muted-foreground">JPG, PNG, WEBP, GIF, SVG, AVIF...</span>
+          )}
+        </div>
       </div>
       <div className="flex gap-2">
-        <Button type="submit" size="sm" className="flex-1" disabled={createItem.isPending}>
+        <Button type="submit" size="sm" className="flex-1" disabled={createItem.isPending || uploading}>
           {createItem.isPending ? "Нэмж байна..." : "Нэмэх"}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onClose}><X size={14} /></Button>
