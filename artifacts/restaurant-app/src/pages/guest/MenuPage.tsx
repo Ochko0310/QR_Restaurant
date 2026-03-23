@@ -128,35 +128,64 @@ function GuestMenuContent({ token }: { token: string }) {
 
 function MenuSection() {
   const { data: categories, isLoading } = useGetMenuCategories();
-  
+  const [selectedCatId, setSelectedCatId] = useState<number | null>(null);
+
   if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading menu...</div>;
+
+  const cats = categories ?? [];
+  const activeCatId = selectedCatId ?? cats[0]?.id ?? null;
+  const activeCat = cats.find(c => c.id === activeCatId);
+  const visibleItems = (activeCat?.items ?? []).filter(i => i.available !== false);
 
   return (
     <div>
-      <div className="relative h-48 md:h-64 mb-8">
+      {/* Hero */}
+      <div className="relative h-40 md:h-56 mb-0">
         <img src={`${import.meta.env.BASE_URL}images/hero-bg.png`} alt="Restaurant ambiance" className="w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
-        <div className="absolute bottom-6 left-6 pr-6">
-          <h2 className="text-3xl md:text-4xl font-display font-bold text-white mb-2">Savor the Moment</h2>
-          <p className="text-white/80 text-sm md:text-base max-w-md">Discover our chef's carefully curated selection of contemporary dishes.</p>
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+        <div className="absolute bottom-5 left-6 pr-6">
+          <h2 className="text-2xl md:text-3xl font-display font-bold text-white mb-1">Savor the Moment</h2>
+          <p className="text-white/70 text-sm max-w-md hidden md:block">Discover our chef's carefully curated selection of contemporary dishes.</p>
         </div>
       </div>
 
-      <div className="px-4 space-y-12">
-        {categories?.map(category => (
-          <div key={category.id} className="scroll-mt-24" id={`cat-${category.id}`}>
-            <div className="mb-6">
-              <h3 className="text-2xl font-display font-bold text-primary">{category.name}</h3>
-              {category.description && <p className="text-muted-foreground mt-1">{category.description}</p>}
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {category.items?.map(item => (
-                <MenuItemCard key={item.id} item={item} />
-              ))}
-            </div>
+      {/* Category tab strip — sticky below header */}
+      <div className="sticky top-16 z-30 bg-background/90 backdrop-blur-xl border-b border-white/5 px-4 py-3">
+        <div className="flex gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          {cats.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setSelectedCatId(cat.id)}
+              className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold border transition-all ${
+                cat.id === activeCatId
+                  ? 'bg-primary text-primary-foreground border-primary shadow-md shadow-primary/20'
+                  : 'bg-card text-muted-foreground border-white/10 hover:border-primary/40 hover:text-foreground'
+              }`}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Items grid for selected category */}
+      <div className="px-4 pt-6 pb-4">
+        {activeCat && (
+          <div>
+            <h3 className="text-xl font-display font-bold text-primary mb-5">{activeCat.name}</h3>
+            {visibleItems.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {visibleItems.map(item => (
+                  <MenuItemCard key={item.id} item={item} />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <p>Энэ ангилалд одоогоор хоол байхгүй байна.</p>
+              </div>
+            )}
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
