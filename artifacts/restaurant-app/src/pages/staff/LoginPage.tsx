@@ -88,11 +88,21 @@ export default function StaffLoginPage() {
 
         <div className="mt-8 pt-6 border-t border-white/5">
           <p className="text-xs text-muted-foreground text-center mb-3 font-semibold uppercase tracking-widest">Demo Accounts</p>
-          <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-background/50 p-3 rounded-xl border border-white/5">
-            <span className="text-primary">manager / manager123</span>
-            <span className="text-primary">waiter / waiter123</span>
-            <span className="text-primary">chef / chef123</span>
-            <span className="text-primary">cashier / cashier123</span>
+          <div className="grid grid-cols-1 gap-2 text-xs font-mono bg-background/50 p-3 rounded-xl border border-white/5">
+            <button
+              type="button"
+              onClick={() => { setUsername("cashier"); setPassword("cashier123"); }}
+              className="text-left text-primary hover:text-primary/80 transition-colors py-1 px-2 rounded hover:bg-primary/10"
+            >
+              cashier / cashier123 — Кассир (захиалга + хэвлэх)
+            </button>
+            <button
+              type="button"
+              onClick={() => { setUsername("manager"); setPassword("manager123"); }}
+              className="text-left text-primary hover:text-primary/80 transition-colors py-1 px-2 rounded hover:bg-primary/10"
+            >
+              manager / manager123 — Менежер (бүх хэсэг)
+            </button>
           </div>
         </div>
       </div>

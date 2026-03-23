@@ -13,18 +13,18 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-  ChefHat, LogOut, Utensils, ShoppingBag, Receipt, BarChart3,
-  QrCode, Clock, CheckCheck, RefreshCw, X, Plus, Trash2, ChevronRight,
+  ChefHat, LogOut, Utensils, ShoppingBag, BarChart3,
+  QrCode, Clock, Printer, CheckCheck, X, Plus, Trash2,
   Wifi, WifiOff, TableProperties,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
-type Tab = "orders" | "kitchen" | "payment" | "menu" | "reports" | "tables";
+type Tab = "orders" | "menu" | "reports" | "tables";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  confirmed: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  confirmed: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
   preparing: "bg-orange-500/20 text-orange-400 border-orange-500/30",
   ready: "bg-green-500/20 text-green-400 border-green-500/30",
   served: "bg-purple-500/20 text-purple-400 border-purple-500/30",
@@ -33,22 +33,95 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  pending: "Хүлээгдэж байна",
-  confirmed: "Баталгаажсан",
-  preparing: "Бэлдэж байна",
+  pending: "Шинэ захиалга",
+  confirmed: "Шинэ захиалга",
+  preparing: "Гал тогоонд байна",
   ready: "Бэлэн",
-  served: "Үйлчлэгдсэн",
-  paid: "Төлбөр хийгдсэн",
+  served: "Хүргэгдсэн",
+  paid: "Дууссан",
   cancelled: "Цуцалсан",
 };
+
+function printKitchenReceipt(order: Order) {
+  const time = format(new Date(order.createdAt), "HH:mm");
+  const date = format(new Date(order.createdAt), "yyyy-MM-dd");
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Гал тогооны баримт #${order.id}</title>
+  <style>
+    @page { size: 80mm auto; margin: 4mm; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      color: #000;
+      width: 72mm;
+      padding: 4px;
+    }
+    .center { text-align: center; }
+    .bold { font-weight: bold; }
+    .large { font-size: 20px; }
+    .xlarge { font-size: 28px; letter-spacing: 2px; }
+    .divider { border-top: 2px dashed #000; margin: 8px 0; }
+    .divider-solid { border-top: 2px solid #000; margin: 8px 0; }
+    .row { display: flex; justify-content: space-between; margin: 4px 0; }
+    .item-name { flex: 1; }
+    .item-qty { font-weight: bold; font-size: 16px; min-width: 30px; text-align: right; }
+    .note { font-size: 12px; color: #444; margin-top: 2px; }
+    .big-order { font-size: 36px; font-weight: bold; text-align: center; margin: 8px 0; }
+    .table-info { font-size: 18px; font-weight: bold; text-align: center; background: #000; color: #fff; padding: 4px; margin: 6px 0; }
+  </style>
+</head>
+<body>
+  <div class="center bold" style="font-size:16px;">★ ГАЛ ТОГООНЫ БАРИМТ ★</div>
+  <div class="divider-solid"></div>
+
+  <div class="table-info">${order.tableName ?? "Ширээ"}</div>
+  <div class="big-order">#${order.id}</div>
+
+  <div class="row note">
+    <span>Цаг: ${time}</span>
+    <span>${date}</span>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="bold" style="margin-bottom:6px;">ЗАХИАЛСАН ХООЛ:</div>
+  ${order.items.map(item => `
+    <div class="row">
+      <span class="item-name">${item.menuItemName}</span>
+      <span class="item-qty">× ${item.quantity}</span>
+    </div>
+    ${item.notes ? `<div class="note">  → ${item.notes}</div>` : ""}
+  `).join("")}
+
+  <div class="divider-solid"></div>
+  <div class="center note">Хоол бэлэн болсноор "Хүргэсэн" товч дарна уу</div>
+  <div class="center note" style="margin-top:4px;">Нийт: ₮${Number(order.totalAmount).toLocaleString()}</div>
+  <div class="divider"></div>
+</body>
+</html>`;
+
+  const win = window.open("", "_blank", "width=400,height=600");
+  if (!win) return;
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => {
+    win.print();
+    win.close();
+  }, 300);
+}
 
 export default function StaffDashboard() {
   const { user, token, logout } = useStore();
   const [, setLocation] = useLocation();
   const { connected } = useStaffRealtime();
-  const [activeTab, setActiveTab] = useState<Tab>(
-    user?.role === "chef" ? "kitchen" : user?.role === "cashier" ? "payment" : "orders"
-  );
+  const [activeTab, setActiveTab] = useState<Tab>("orders");
 
   if (!token || !user) {
     setLocation("/staff/login");
@@ -56,12 +129,10 @@ export default function StaffDashboard() {
   }
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode; roles: string[] }[] = [
-    { id: "orders", label: "Захиалгууд", icon: <ShoppingBag size={16} />, roles: ["manager", "waiter"] },
-    { id: "kitchen", label: "Гал тогоо", icon: <ChefHat size={16} />, roles: ["manager", "chef"] },
-    { id: "payment", label: "Кассир", icon: <Receipt size={16} />, roles: ["manager", "cashier"] },
+    { id: "orders", label: "Захиалгууд", icon: <ShoppingBag size={16} />, roles: ["manager", "cashier", "waiter", "chef"] },
     { id: "menu", label: "Цэс", icon: <Utensils size={16} />, roles: ["manager"] },
     { id: "reports", label: "Тайлан", icon: <BarChart3 size={16} />, roles: ["manager"] },
-    { id: "tables", label: "Ширээ", icon: <TableProperties size={16} />, roles: ["manager", "waiter"] },
+    { id: "tables", label: "Ширээ", icon: <TableProperties size={16} />, roles: ["manager"] },
   ];
 
   const visibleTabs = tabs.filter((t) => t.roles.includes(user.role));
@@ -109,9 +180,7 @@ export default function StaffDashboard() {
       </header>
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
-        {activeTab === "orders" && <WaiterOrders />}
-        {activeTab === "kitchen" && <KitchenOrders />}
-        {activeTab === "payment" && <PaymentOrders />}
+        {activeTab === "orders" && <OrdersView />}
         {activeTab === "menu" && <MenuManagement />}
         {activeTab === "reports" && <ReportsView />}
         {activeTab === "tables" && <TablesView />}
@@ -120,13 +189,14 @@ export default function StaffDashboard() {
   );
 }
 
-function WaiterOrders() {
+function OrdersView() {
   const { data: orders, isLoading } = useGetOrders();
   const updateStatus = useUpdateOrderStatus();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const activeOrders = orders?.filter((o) => ["pending", "confirmed", "ready"].includes(o.status)) ?? [];
+  const active = orders?.filter((o) => !["paid", "cancelled"].includes(o.status)) ?? [];
+  const done = orders?.filter((o) => o.status === "paid").slice(0, 5) ?? [];
 
   const handle = (orderId: number, status: string) => {
     updateStatus.mutate(
@@ -134,116 +204,125 @@ function WaiterOrders() {
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetOrdersQueryKey() });
-          toast({ title: `Захиалга #${orderId} → ${STATUS_LABELS[status]}` });
         },
       }
     );
   };
 
+  const handlePrintAndConfirm = (order: Order) => {
+    printKitchenReceipt(order);
+    handle(order.id, "preparing");
+    toast({ title: `Захиалга #${order.id} — баримт хэвлэгдлээ, гал тогоонд илгээлээ` });
+  };
+
+  const handleDeliver = (order: Order) => {
+    handle(order.id, "paid");
+    toast({ title: `Захиалга #${order.id} — хүргэгдсэн, дууслаа ✓` });
+  };
+
+  const handleCancel = (order: Order) => {
+    handle(order.id, "cancelled");
+    toast({ title: `Захиалга #${order.id} цуцлагдлаа`, variant: "destructive" });
+  };
+
   if (isLoading) return <Spinner />;
+
   return (
-    <div>
-      <Header title="Идэвхтэй захиалгууд" count={activeOrders.length} />
-      {!activeOrders.length ? <Empty text="Идэвхтэй захиалга байхгүй" /> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {activeOrders.map((o) => (
-            <OrderCard key={o.id} order={o}>
-              {o.status === "pending" && (
-                <Button size="sm" className="w-full" onClick={() => handle(o.id, "confirmed")}>
-                  <CheckCheck size={14} className="mr-1" /> Баталгаажуулах
-                </Button>
-              )}
-              {o.status === "ready" && (
-                <Button size="sm" variant="outline" className="w-full" onClick={() => handle(o.id, "served")}>
-                  <ChevronRight size={14} className="mr-1" /> Үйлчлэгдсэн
-                </Button>
-              )}
-            </OrderCard>
-          ))}
+    <div className="space-y-8">
+      {/* Flow explanation */}
+      <div className="flex items-center gap-2 text-sm text-muted-foreground bg-card/50 border border-border rounded-xl px-4 py-3">
+        <span className="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full text-xs font-bold">Шинэ</span>
+        <span>→ Баримт хэвлэж гал тогоонд өгнө →</span>
+        <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2 py-0.5 rounded-full text-xs font-bold">Гал тогоонд</span>
+        <span>→ Хоол болсноор хүргэнэ →</span>
+        <span className="bg-gray-500/20 text-gray-400 border border-gray-500/30 px-2 py-0.5 rounded-full text-xs font-bold">Дууссан</span>
+      </div>
+
+      {/* Active orders */}
+      <div>
+        <div className="flex items-center gap-3 mb-5">
+          <h2 className="text-xl font-bold">Идэвхтэй захиалгууд</h2>
+          <span className="bg-primary/10 text-primary text-sm font-bold px-2.5 py-0.5 rounded-full border border-primary/20">
+            {active.length}
+          </span>
         </div>
-      )}
-    </div>
-  );
-}
 
-function KitchenOrders() {
-  const { data: orders, isLoading } = useGetOrders();
-  const updateStatus = useUpdateOrderStatus();
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
+        {!active.length ? (
+          <div className="text-center py-16 text-muted-foreground">
+            <ShoppingBag size={40} className="mx-auto mb-3 opacity-30" />
+            <p>Одоогоор захиалга байхгүй байна</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {active.map((order) => (
+              <OrderCard key={order.id} order={order}>
+                {/* New order: print receipt */}
+                {(order.status === "pending" || order.status === "confirmed") && (
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold"
+                      onClick={() => handlePrintAndConfirm(order)}
+                    >
+                      <Printer size={15} className="mr-2" />
+                      Баримт хэвлэх — Гал тогоонд илгээх
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full text-muted-foreground hover:text-destructive text-xs"
+                      onClick={() => handleCancel(order)}
+                    >
+                      <X size={12} className="mr-1" /> Цуцлах
+                    </Button>
+                  </div>
+                )}
 
-  const kitchenOrders = orders?.filter((o) => ["confirmed", "preparing"].includes(o.status)) ?? [];
+                {/* In kitchen: waiting */}
+                {order.status === "preparing" && (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-center gap-2 py-2 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm">
+                      <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
+                      Гал тогоонд бэлдэж байна...
+                    </div>
+                    <Button
+                      className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold"
+                      onClick={() => handleDeliver(order)}
+                    >
+                      <CheckCheck size={15} className="mr-2" />
+                      Хүргэсэн — Дууслаа
+                    </Button>
+                  </div>
+                )}
 
-  const handle = (orderId: number, status: string) => {
-    updateStatus.mutate(
-      { orderId, data: { status: status as "confirmed" | "preparing" | "ready" | "served" | "paid" | "cancelled" } },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetOrdersQueryKey() });
-          toast({ title: `Захиалга #${orderId} → ${STATUS_LABELS[status]}` });
-        },
-      }
-    );
-  };
+                {/* Ready / served: deliver */}
+                {(order.status === "ready" || order.status === "served") && (
+                  <Button
+                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold"
+                    onClick={() => handleDeliver(order)}
+                  >
+                    <CheckCheck size={15} className="mr-2" />
+                    Хүргэсэн — Дууслаа
+                  </Button>
+                )}
+              </OrderCard>
+            ))}
+          </div>
+        )}
+      </div>
 
-  if (isLoading) return <Spinner />;
-  return (
-    <div>
-      <Header title="Гал тогооны захиалгууд" count={kitchenOrders.length} />
-      {!kitchenOrders.length ? <Empty text="Боловсруулах захиалга байхгүй" /> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {kitchenOrders.map((o) => (
-            <OrderCard key={o.id} order={o}>
-              {o.status === "confirmed" && (
-                <Button size="sm" className="w-full bg-orange-500 hover:bg-orange-600 text-white" onClick={() => handle(o.id, "preparing")}>
-                  <RefreshCw size={14} className="mr-1" /> Бэлдэж эхлэх
-                </Button>
-              )}
-              {o.status === "preparing" && (
-                <Button size="sm" className="w-full bg-green-500 hover:bg-green-600 text-white" onClick={() => handle(o.id, "ready")}>
-                  <CheckCheck size={14} className="mr-1" /> Бэлэн болсон
-                </Button>
-              )}
-            </OrderCard>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PaymentOrders() {
-  const { data: orders, isLoading } = useGetOrders({ status: "served" });
-  const updateStatus = useUpdateOrderStatus();
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-
-  const handle = (orderId: number, amount: number) => {
-    updateStatus.mutate(
-      { orderId, data: { status: "paid" } },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetOrdersQueryKey() });
-          toast({ title: `Захиалга #${orderId} — ₮${Number(amount).toLocaleString()} төлбөр хийгдлээ` });
-        },
-      }
-    );
-  };
-
-  if (isLoading) return <Spinner />;
-  const served = orders ?? [];
-  return (
-    <div>
-      <Header title="Төлбөр хүлээгдэж буй" count={served.length} />
-      {!served.length ? <Empty text="Төлбөр хүлээж буй захиалга байхгүй" /> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {served.map((o) => (
-            <OrderCard key={o.id} order={o}>
-              <Button size="sm" className="w-full bg-emerald-500 hover:bg-emerald-600 text-white" onClick={() => handle(o.id, o.totalAmount)}>
-                <Receipt size={14} className="mr-1" /> ₮{Number(o.totalAmount).toLocaleString()} Авах
-              </Button>
-            </OrderCard>
-          ))}
+      {/* Recently completed */}
+      {done.length > 0 && (
+        <div>
+          <h3 className="text-base font-semibold text-muted-foreground mb-3">Саяхан дууссан захиалгууд</h3>
+          <div className="space-y-2">
+            {done.map((order) => (
+              <div key={order.id} className="flex items-center justify-between px-4 py-3 bg-card border border-border rounded-xl text-sm opacity-60">
+                <span className="text-muted-foreground">#{order.id} · {order.tableName}</span>
+                <span className="text-muted-foreground">{format(new Date(order.createdAt), "HH:mm")}</span>
+                <span className="font-bold">₮{Number(order.totalAmount).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -349,7 +428,7 @@ function ReportsView() {
   const COLORS = ["#f59e0b", "#3b82f6", "#f97316", "#22c55e", "#a855f7"];
 
   if (isLoading) return <Spinner />;
-  if (!report) return <Empty text="Тайлан олдсонгүй" />;
+  if (!report) return <div className="text-center py-16 text-muted-foreground">Тайлан олдсонгүй</div>;
 
   const statusData = Object.entries(report.ordersByStatus ?? {}).map(([k, v]) => ({
     name: STATUS_LABELS[k] ?? k,
@@ -380,7 +459,7 @@ function ReportsView() {
           </div>
         </div>
         <div className="bg-card border border-border rounded-2xl p-5">
-          <h3 className="font-bold mb-4">Хамгийн их захиалагдах хоол (Top 5)</h3>
+          <h3 className="font-bold mb-4">Хамгийн их захиалагдсан (Top 5)</h3>
           <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={topItems} layout="vertical">
@@ -450,7 +529,11 @@ function TablesView() {
 
 function OrderCard({ order, children }: { order: Order; children?: React.ReactNode }) {
   return (
-    <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+    <div className={`bg-card border rounded-2xl overflow-hidden shadow-sm transition-all ${
+      (order.status === "pending" || order.status === "confirmed")
+        ? "border-primary/40 shadow-primary/10"
+        : "border-border"
+    }`}>
       <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-muted/20">
         <div>
           <p className="font-bold text-sm">Захиалга #{order.id}</p>
@@ -466,7 +549,7 @@ function OrderCard({ order, children }: { order: Order; children?: React.ReactNo
         {order.items.map((item) => (
           <div key={item.id} className="flex items-center justify-between text-sm">
             <span className="flex items-center gap-2">
-              <span className="bg-primary/10 text-primary w-5 h-5 flex items-center justify-center rounded text-xs font-bold">
+              <span className="bg-primary/10 text-primary w-6 h-6 flex items-center justify-center rounded text-xs font-bold">
                 {item.quantity}
               </span>
               {item.menuItemName}
@@ -475,20 +558,11 @@ function OrderCard({ order, children }: { order: Order; children?: React.ReactNo
           </div>
         ))}
       </div>
-      <div className="px-4 py-3 border-t border-border flex items-center justify-between">
+      <div className="px-4 py-2 border-t border-border flex items-center justify-between">
         <span className="text-sm text-muted-foreground">Нийт</span>
-        <span className="font-bold">₮{Number(order.totalAmount).toLocaleString()}</span>
+        <span className="font-bold text-primary">₮{Number(order.totalAmount).toLocaleString()}</span>
       </div>
-      {children && <div className="px-4 pb-4">{children}</div>}
-    </div>
-  );
-}
-
-function Header({ title, count }: { title: string; count: number }) {
-  return (
-    <div className="flex items-center gap-3 mb-6">
-      <h2 className="text-xl font-bold">{title}</h2>
-      <span className="bg-primary/10 text-primary text-sm font-bold px-2.5 py-0.5 rounded-full border border-primary/20">{count}</span>
+      {children && <div className="px-4 pb-4 pt-1">{children}</div>}
     </div>
   );
 }
@@ -500,10 +574,6 @@ function StatCard({ label, value, primary }: { label: string; value: string; pri
       <p className={`text-3xl font-bold mt-1 ${primary ? "text-primary" : "text-foreground"}`}>{value}</p>
     </div>
   );
-}
-
-function Empty({ text }: { text: string }) {
-  return <div className="text-center py-16 text-muted-foreground"><p>{text}</p></div>;
 }
 
 function Spinner() {
