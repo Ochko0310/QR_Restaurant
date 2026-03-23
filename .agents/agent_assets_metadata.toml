@@ -30,3 +30,9 @@ id = "hBmrnxAN5BEYia_9LYHbs"
 uri = "file://diploma_latex_MUST.zip"
 type = "unspecified"
 title = "Diploma LaTeX Project (MUST) — ASCII filename"
+
+[[outputs]]
+id = "5ytWv6Q28PGrVrEz_o5jG"
+uri = "file://diploma_latex_MUST.tar.gz"
+type = "unspecified"
+title = "Diploma LaTeX — diploma_latex_MUST.tar.gz"
