@@ -6,3 +6,9 @@ id = "cDbyg95WSKAYseSE2L_gV"
 uri = "file://diploma_thesis_restaurant_system.md"
 type = "text"
 title = "Дипломын ажил: Рестораны Ширээ Захиалга, Цэс Удирдлагын Мобайл Систем"
+
+[[outputs]]
+id = "tS7HpL-AI2FiZ2N2CAKyE"
+uri = "file://qr_restaurant_ordering_system_paper.md"
+type = "text"
+title = "QR Код Дээр Суурилсан Рестораны Захиалгын Системийн Paper"
