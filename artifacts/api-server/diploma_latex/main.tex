@@ -1,0 +1,185 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ШУТИС Дипломын Ажлын LaTeX Загвар
+% QR Кодоор Суурилсан Рестораны Ширээний
+% Мобайл Захиалгын Систем
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\documentclass[
+11pt,
+oneside,
+english,
+singlespacing,
+nolistspacing,
+]{MUST-Thesis}
+
+%--- Монгол хэлний тохиргоо ---
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[mongolian]{babel}
+
+%--- Нэмэлт багцууд ---
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage[table]{xcolor}
+\usepackage{rotating}
+\usepackage{multirow}
+\usepackage{longtable}
+\usepackage{tabularx}
+\newcolumntype{Y}{>{\raggedleft\arraybackslash}X}
+\newcolumntype{Z}{>{\centering\arraybackslash}X}
+\usepackage{tcolorbox}
+\usepackage{array}
+\usepackage{colortbl}
+\tcbuselibrary{skins}
+
+\tcbset{tab2/.style={enhanced,fonttitle=\bfseries,fontupper=\footnotesize\rmfamily,
+                colback=white,colframe=black,colbacktitle=white,
+                coltitle=black,center title,sharp corners=all}}
+
+\newcounter{tblerows}
+\expandafter\let\csname c@tblerows\endcsname\rownum
+
+%--- Математик ---
+\usepackage{amsmath,amssymb}
+\usepackage{mathtools, nccmath}
+
+%--- Зураг ---
+\usepackage{wrapfig}
+\usepackage{subcaption}
+\usepackage{graphicx}
+
+%--- TikZ ---
+\usepackage{pgf}
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows,automata,positioning,fit}
+\usepackage{xcolor}
+
+%--- Өнгийн тодорхойлолт ---
+\usepackage{pagecolor}
+\definecolor{LigthBlue}{RGB}{102,255,255}
+\definecolor{Beige}{RGB}{255,220,180}
+\definecolor{OliveGreen}{cmyk}{0.64,0,0.95,0.40}
+\definecolor{CadetBlue}{cmyk}{0.62,0.57,0.23,0}
+\definecolor{lightlightgray}{gray}{0.9}
+\definecolor{TableHeader}{RGB}{70,130,180}
+\definecolor{TableRow}{RGB}{240,248,255}
+
+%--- Эх код хэвлэх ---
+\usepackage{listings}
+\renewcommand{\lstlistingname}{Эх код}
+\lstset{
+language=SQL,
+basicstyle=\small\ttfamily,
+keywordstyle=\color{OliveGreen},
+commentstyle=\color{CadetBlue},
+numbers=left,
+numberstyle=\tiny,
+stepnumber=1,
+numbersep=5pt,
+backgroundcolor=\color{lightlightgray},
+frame=none,
+tabsize=2,
+captionpos=t,
+breaklines=true,
+breakatwhitespace=false,
+showspaces=false,
+showtabs=false,
+columns=flexible,
+}
+
+%--- Ном зүй ---
+\usepackage[autostyle=false]{csquotes}
+\usepackage[backend=bibtex,natbib=true,sorting=none,sortcites]{biblatex}
+\addbibresource{references.bib}
+
+%--- Монгол командууд ---
+\newcommand{\authorshipname}{Зохиогчийн эрх хамгаалал}
+\newcommand{\abbrevname}{Товчилсон үгс}
+\newcommand{\constantsname}{Физик тогтмолууд}
+\newcommand{\symbolsname}{Таних тэмдэгтүүд}
+\newcommand{\acknowledgementname}{Талархал}
+\newcommand{\abstractname}{Хураангуй}
+\newcommand{\conclusionname}{Дүгнэлт}
+
+%===============================================================
+%         ДИПЛОМЫН АЖЛЫН МЭДЭЭЛЭЛ
+%===============================================================
+
+\thesistitle{QR Кодоор Суурилсан Рестораны Ширээний Мобайл Захиалгын Систем Хөгжүүлэх нь}
+\thesistitleeng{Development of a QR Code-Based Mobile Table Ordering System for Restaurants}
+\thesistype{Бакалаврын төгсөлтийн ажил}
+
+%--- Оюутны мэдээлэл (өөрийнхөөрөө солино) ---
+\authorshort{Т.Оюунбаатар}
+\authorlong{Тогтохын Оюунбаатар}
+\authorcode{B220930001}
+\authormail{oyunbaatar@gmail.com}
+\authorphone{9911-XXXX}
+\keywords{QR код, мобайл захиалга, рестораны систем, WebSocket, бодит цагийн мэдэгдэл}
+
+%--- Багш нарын мэдээлэл (өөрийнхөөрөө солино) ---
+\supervisor{Доктор (Ph.D), дэд профессор Д.Сарангэрэл}
+\reader{}
+\readeraddress{ШУТИС-МХТС, Мэдээллийн технологийн салбар}
+\advisorA{Магистр Ө.Сүх-Очир}
+
+%--- Мэргэжлийн мэдээлэл ---
+\degreeindex{D061203}
+\degree{Мэдээллийн системийн мэргэжил}
+\program{Мэдээллийн системийн хөтөлбөр}
+\subject{}
+\department{Мэдээллийн технологийн салбар}
+\deptchair{доктор (Ph.D), дэд профессор Д.Сарангэрэл}
+\group{}
+\faculty{\href{http://www.sict.edu.mn}{Мэдээлэл, Холбооны Технологийн Сургууль}}
+\university{\href{http://www.must.edu.mn}{Шинжлэх Ухаан, Технологийн Их Сургууль}}
+
+\hypersetup{pdftitle=\ttitle}
+\hypersetup{pdfauthor=\shortname}
+\hypersetup{pdfkeywords=\keywordnames}
+\hypersetup{allcolors=black}
+
+\begin{document}
+
+\frontmatter
+\pagestyle{plain}
+
+\include{FrontBackMatter/Titlepage}
+\include{FrontBackMatter/Plan-Review}
+\include{FrontBackMatter/Declaration}
+\include{FrontBackMatter/Abstract}
+\include{FrontBackMatter/Acknowledgments}
+\include{FrontBackMatter/Abbreviations}
+
+%--- Гарчиг, зураг, хүснэгтийн жагсаалт ---
+\tableofcontents
+\listoffigures
+\listoftables
+
+%===============================================================
+%         БҮЛГҮҮД
+%===============================================================
+
+\mainmatter
+\pagestyle{thesis}
+\myformat
+
+\include{Chapters/Chapter1}
+\include{Chapters/Chapter2}
+\include{Chapters/Chapter3}
+\include{Chapters/Chapter4}
+
+\pagestyle{plain}
+\include{Chapters/Conclusion}
+\pagestyle{thesis}
+
+%--- Хавсралт ---
+\appendix
+\include{Appendices/AppendixA}
+
+%--- Ном зүй ---
+\defformat
+\addchaptertocentry{Ном зүй}
+\printbibliography[heading=bibliography,title={Ном зүй}]
+
+\end{document}
