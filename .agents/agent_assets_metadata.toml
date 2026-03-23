@@ -18,3 +18,9 @@ id = "PJaMccSNa1suDJRq7q8TD"
 uri = "file://qr_restaurant_system_full_paper.md"
 type = "text"
 title = "QR Кодоор Суурилсан Рестораны Захиалгын Систем — Бүрэн Дэлгэрэнгүй Paper"
+
+[[outputs]]
+id = "yaUqSeooPNF0ST9B9LGsB"
+uri = "file://diploma_latex_ШУТИС.zip"
+type = "unspecified"
+title = "ШУТИС Дипломын ажил — LaTeX бүрэн архив"
