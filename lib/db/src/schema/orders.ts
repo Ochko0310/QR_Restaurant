@@ -14,11 +14,14 @@ export const orderStatusEnum = pgEnum("order_status", [
   "cancelled",
 ]);
 
+export const paymentMethodEnum = pgEnum("payment_method", ["cash", "bank"]);
+
 export const ordersTable = pgTable("orders", {
   id: serial("id").primaryKey(),
   tableId: integer("table_id").notNull().references(() => tablesTable.id),
   tableToken: text("table_token").notNull(),
   status: orderStatusEnum("status").notNull().default("pending"),
+  paymentMethod: paymentMethodEnum("payment_method").notNull().default("cash"),
   totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

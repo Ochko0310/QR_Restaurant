@@ -19,6 +19,7 @@ async function getOrderWithItems(orderId: number) {
     ...order,
     tableName: table?.name ?? "",
     totalAmount: Number(order.totalAmount),
+    paymentMethod: order.paymentMethod ?? "cash",
     items: items.map((i) => ({
       ...i,
       unitPrice: Number(i.unitPrice),
@@ -57,6 +58,7 @@ router.get("/orders", requireAuth, async (req, res) => {
       ...order,
       tableName: tableMap.get(order.tableId)?.name ?? "",
       totalAmount: Number(order.totalAmount),
+      paymentMethod: order.paymentMethod ?? "cash",
       items: allItems
         .filter((i) => i.orderId === order.id)
         .map((i) => ({ ...i, unitPrice: Number(i.unitPrice) })),
@@ -70,10 +72,11 @@ router.get("/orders", requireAuth, async (req, res) => {
 
 router.post("/orders", async (req, res) => {
   try {
-    const { tableToken, items, notes } = req.body as {
+    const { tableToken, items, notes, paymentMethod } = req.body as {
       tableToken: string;
       items: Array<{ menuItemId: number; quantity: number; notes?: string }>;
       notes?: string;
+      paymentMethod?: "cash" | "bank";
     };
 
     if (!tableToken || !items?.length) {
@@ -84,6 +87,12 @@ router.post("/orders", async (req, res) => {
     const [table] = await db.select().from(tablesTable).where(eq(tablesTable.qrToken, tableToken));
     if (!table) {
       res.status(401).json({ error: "invalid_session", message: "Invalid table session" });
+      return;
+    }
+
+    // QR session security: only allow ordering when table is occupied (activated by staff)
+    if (table.status === "available") {
+      res.status(403).json({ error: "table_not_active", message: "Ширээ идэвхжээгүй байна. Үйлчлэгчид хандана уу." });
       return;
     }
 
@@ -106,9 +115,11 @@ router.post("/orders", async (req, res) => {
       };
     });
 
+    const method = paymentMethod ?? "cash";
+
     const [order] = await db
       .insert(ordersTable)
-      .values({ tableId: table.id, tableToken, totalAmount: String(total), notes: notes ?? null })
+      .values({ tableId: table.id, tableToken, totalAmount: String(total), notes: notes ?? null, paymentMethod: method })
       .returning();
 
     await db.insert(orderItemsTable).values(orderItemsData.map((i) => ({ ...i, orderId: order.id })));
@@ -119,7 +130,10 @@ router.post("/orders", async (req, res) => {
     io.to(`restaurant_1`).emit("order:new", fullOrder);
     io.to(`session_${tableToken}`).emit("order:updated", fullOrder);
 
-    await db.update(tablesTable).set({ status: "occupied" }).where(eq(tablesTable.id, table.id));
+    // Keep table occupied (staff already activated it)
+    if (table.status !== "occupied") {
+      await db.update(tablesTable).set({ status: "occupied" }).where(eq(tablesTable.id, table.id));
+    }
 
     res.status(201).json(fullOrder);
   } catch (err) {
@@ -197,6 +211,7 @@ router.get("/orders/table/:tableToken", async (req, res) => {
       ...order,
       tableName: table?.name ?? "",
       totalAmount: Number(order.totalAmount),
+      paymentMethod: order.paymentMethod ?? "cash",
       items: allItems
         .filter((i) => i.orderId === order.id)
         .map((i) => ({ ...i, unitPrice: Number(i.unitPrice) })),

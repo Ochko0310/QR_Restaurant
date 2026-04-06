@@ -19,7 +19,7 @@ import {
   QrCode, Clock, Printer, CheckCheck, X, Plus, Trash2,
   Wifi, WifiOff, TableProperties, Banknote, ArrowRight,
   CalendarDays, Download, Pencil, Users, ClipboardList,
-  Minus, Search,
+  Minus, Search, Building2, UserCheck, UserX,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
@@ -384,18 +384,42 @@ function OrdersView() {
                         <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
                         Гал тогоонд бэлдэж байна...
                       </div>
-                      <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold"
-                        onClick={() => setPayingOrder(order)}>
-                        <CheckCheck size={15} className="mr-2" /> Төлбөр авах
-                      </Button>
+                      {(order as any).paymentMethod === "bank" ? (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center justify-center gap-2 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold">
+                            <Banknote size={14} /> Банкаар төлсөн
+                          </div>
+                          <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold"
+                            onClick={() => handlePaymentConfirm(order)}>
+                            <CheckCheck size={15} className="mr-2" /> Дуусга
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold"
+                          onClick={() => setPayingOrder(order)}>
+                          <CheckCheck size={15} className="mr-2" /> Төлбөр авах
+                        </Button>
+                      )}
                     </div>
                   )}
 
                   {(order.status === "ready" || order.status === "served") && (
-                    <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold"
-                      onClick={() => setPayingOrder(order)}>
-                      <CheckCheck size={15} className="mr-2" /> Төлбөр авах
-                    </Button>
+                    (order as any).paymentMethod === "bank" ? (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center justify-center gap-2 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold">
+                          <Banknote size={14} /> Банкаар төлсөн
+                        </div>
+                        <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold"
+                          onClick={() => handlePaymentConfirm(order)}>
+                          <CheckCheck size={15} className="mr-2" /> Дуусга
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold"
+                        onClick={() => setPayingOrder(order)}>
+                        <CheckCheck size={15} className="mr-2" /> Төлбөр авах
+                      </Button>
+                    )
                   )}
                 </OrderCard>
               ))}
@@ -1267,6 +1291,17 @@ function TablesView() {
     toast({ title: "Устгасан" });
   };
 
+  const handleToggleSession = async (table: Table) => {
+    const newStatus = table.status === "available" ? "occupied" : "available";
+    await customFetch(`/api/tables/${table.id}`, { method: "PATCH", body: JSON.stringify({ status: newStatus }) });
+    refresh();
+    toast({
+      title: newStatus === "occupied"
+        ? `${table.name} — Зочин суулгалаа. QR захиалга идэвхжлээ.`
+        : `${table.name} — Ширээ чөлөөлөгдлөө. QR захиалга хаагдлаа.`,
+    });
+  };
+
   const printQR = (table: Table, url: string) => {
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>QR — ${table.name}</title>
 <style>
@@ -1350,6 +1385,23 @@ function TablesView() {
 
             {editingId !== table.id && (
               <>
+                {/* Session control button */}
+                <Button
+                  size="sm"
+                  className={`w-full font-bold ${
+                    table.status === "available"
+                      ? "bg-emerald-500 hover:bg-emerald-600 text-white"
+                      : "bg-orange-500/20 text-orange-400 border border-orange-500/30 hover:bg-orange-500/30"
+                  }`}
+                  onClick={() => handleToggleSession(table)}
+                >
+                  {table.status === "available" ? (
+                    <><UserCheck size={14} className="mr-1.5" /> Зочин суулгах</>
+                  ) : (
+                    <><UserX size={14} className="mr-1.5" /> Чөлөөлөх</>
+                  )}
+                </Button>
+
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1"
                     onClick={() => { setEditingId(table.id); setEditName(table.name); setEditCapacity(String(table.capacity)); }}>
@@ -1387,15 +1439,25 @@ function TablesView() {
 }
 
 function OrderCard({ order, children }: { order: Order; children?: React.ReactNode }) {
+  const pm = (order as any).paymentMethod;
   return (
     <div className={`bg-card border rounded-2xl overflow-hidden shadow-sm transition-all ${
       (order.status === "pending" || order.status === "confirmed")
         ? "border-primary/40 shadow-primary/10"
-        : "border-border"
+        : pm === "bank" && order.status === "paid"
+          ? "border-emerald-500/40 shadow-emerald-500/10"
+          : "border-border"
     }`}>
       <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-muted/20">
         <div>
-          <p className="font-bold text-sm">Захиалга #{order.id}</p>
+          <p className="font-bold text-sm flex items-center gap-2">
+            Захиалга #{order.id}
+            {pm === "bank" && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                Банк
+              </span>
+            )}
+          </p>
           <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
             <Clock size={10} /> {format(new Date(order.createdAt), "HH:mm")} · {order.tableName}
           </p>

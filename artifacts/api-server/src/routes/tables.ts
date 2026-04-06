@@ -105,6 +105,7 @@ router.get("/session/validate", async (req, res) => {
       tableId: table.id,
       tableName: table.name,
       tableNumber: table.number,
+      tableStatus: table.status,
       valid: true,
     });
   } catch (err) {

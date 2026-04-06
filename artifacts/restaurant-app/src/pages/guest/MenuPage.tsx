@@ -13,9 +13,10 @@ import { useStore } from "@/hooks/use-store";
 import { useGuestRealtime } from "@/hooks/use-realtime";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { 
+import {
   ShoppingBag, Plus, Minus, X,
-  Clock, ArrowRight, ReceiptText, QrCode
+  Clock, ArrowRight, ReceiptText, QrCode,
+  Banknote, Building2, AlertTriangle
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -63,6 +64,26 @@ function GuestMenuContent({ token }: { token: string }) {
         <div className="max-w-md space-y-4">
           <h1 className="text-2xl font-display font-bold text-destructive">Хүчингүй QR код</h1>
           <p className="text-muted-foreground">QR кодын сесс хүчингүй болсон байна. Үйлчлэгчдэд хандана уу.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // QR security: if table is not activated (available), block ordering
+  if ((session as any).tableStatus === "available") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6 text-center">
+        <div className="max-w-md space-y-6">
+          <div className="w-24 h-24 bg-yellow-500/10 rounded-3xl mx-auto flex items-center justify-center border border-yellow-500/20">
+            <AlertTriangle size={48} className="text-yellow-500" />
+          </div>
+          <h1 className="text-2xl font-display font-bold">Ширээ идэвхжээгүй</h1>
+          <p className="text-muted-foreground text-lg">
+            Захиалга өгөхийн тулд үйлчлэгчид хандаж ширээгээ идэвхжүүлнэ үү.
+          </p>
+          <p className="text-sm text-muted-foreground/60">
+            {session.tableName}
+          </p>
         </div>
       </div>
     );
@@ -271,6 +292,7 @@ function CartDrawer({ token, onClose, onOrderSuccess }: { token: string, onClose
   const createOrder = useCreateOrder();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank">("cash");
 
   const total = cart.reduce((acc, item) => acc + (item.menuItem.price * item.quantity), 0);
 
@@ -278,29 +300,35 @@ function CartDrawer({ token, onClose, onOrderSuccess }: { token: string, onClose
     createOrder.mutate({
       data: {
         tableToken: token,
-        items: cart.map(i => ({ menuItemId: i.menuItem.id, quantity: i.quantity, notes: i.notes }))
-      }
+        items: cart.map(i => ({ menuItemId: i.menuItem.id, quantity: i.quantity, notes: i.notes })),
+        paymentMethod,
+      } as any
     }, {
       onSuccess: () => {
         clearCart();
         queryClient.invalidateQueries({ queryKey: getGetTableOrdersQueryKey(token) });
-        toast({ title: "Захиалга явлаа!", description: "Таны захиалга гал тогоонд илгээгдлээ." });
+        if (paymentMethod === "bank") {
+          toast({ title: "Захиалга явлаа!", description: "Банкаар төлбөр хийгдсэн. Захиалга гал тогоонд илгээгдлээ." });
+        } else {
+          toast({ title: "Захиалга явлаа!", description: "Кассаар төлбөрөө төлнө үү." });
+        }
         onOrderSuccess();
       },
-      onError: () => {
-        toast({ title: "Алдаа", description: "Захиалга явуулж чадсангүй. Дахин оролдоно уу.", variant: "destructive" });
+      onError: (err: any) => {
+        const msg = err?.response?.data?.message || err?.message || "Захиалга явуулж чадсангүй. Дахин оролдоно уу.";
+        toast({ title: "Алдаа", description: msg, variant: "destructive" });
       }
     });
   };
 
   return (
     <>
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         onClick={onClose}
         className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
       />
-      <motion.div 
+      <motion.div
         initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 25, stiffness: 200 }}
         className="fixed bottom-0 left-0 right-0 md:left-auto md:w-96 md:top-0 md:bottom-0 bg-card z-50 flex flex-col shadow-2xl md:rounded-l-3xl rounded-t-3xl border-t md:border-l border-white/10"
@@ -343,18 +371,74 @@ function CartDrawer({ token, onClose, onOrderSuccess }: { token: string, onClose
         </div>
 
         {cart.length > 0 && (
-          <div className="p-5 bg-background border-t border-white/5">
-            <div className="flex justify-between items-center mb-4">
+          <div className="p-5 bg-background border-t border-white/5 space-y-4">
+            <div className="flex justify-between items-center">
               <span className="text-muted-foreground">Нийт төлбөр</span>
               <span className="text-2xl font-bold text-foreground">₮{total.toLocaleString()}</span>
             </div>
-            <Button 
-              onClick={handlePlaceOrder} 
+
+            {/* Payment method selection */}
+            <div>
+              <p className="text-sm text-muted-foreground mb-2">Төлбөрийн хэлбэр</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setPaymentMethod("cash")}
+                  className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                    paymentMethod === "cash"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-white/10 text-muted-foreground hover:border-white/20"
+                  }`}
+                >
+                  <Banknote size={24} />
+                  <span className="text-sm font-bold">Кассаар</span>
+                  <span className="text-[10px] opacity-70">Бэлнээр төлөх</span>
+                </button>
+                <button
+                  onClick={() => setPaymentMethod("bank")}
+                  className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                    paymentMethod === "bank"
+                      ? "border-emerald-500 bg-emerald-500/10 text-emerald-400"
+                      : "border-white/10 text-muted-foreground hover:border-white/20"
+                  }`}
+                >
+                  <Building2 size={24} />
+                  <span className="text-sm font-bold">Банкаар</span>
+                  <span className="text-[10px] opacity-70">Шилжүүлэг / QR</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Bank payment placeholder for future integration */}
+            {paymentMethod === "bank" && (
+              <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 space-y-3">
+                <p className="text-sm text-emerald-400 font-semibold text-center">Банкны шилжүүлэг</p>
+                {/* TODO: Bank integration area - QPay, SocialPay, Khan Bank, etc. */}
+                <div className="bg-background/50 rounded-lg p-4 text-center space-y-2 border border-dashed border-emerald-500/30">
+                  <Building2 size={32} className="mx-auto text-emerald-500/40" />
+                  <p className="text-xs text-muted-foreground">
+                    Банкны QR код энд гарна
+                  </p>
+                  <p className="text-[10px] text-muted-foreground/60">
+                    QPay / SocialPay / Хаан банк
+                  </p>
+                </div>
+                <p className="text-[11px] text-emerald-400/60 text-center">
+                  Төлбөр хийсний дараа захиалга автоматаар баталгаажна
+                </p>
+              </div>
+            )}
+
+            <Button
+              onClick={handlePlaceOrder}
               disabled={createOrder.isPending}
-              className="w-full h-14 rounded-xl text-lg font-bold shadow-xl shadow-primary/20 relative overflow-hidden group"
+              className={`w-full h-14 rounded-xl text-lg font-bold shadow-xl relative overflow-hidden group ${
+                paymentMethod === "bank" ? "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20" : "shadow-primary/20"
+              }`}
             >
               <span className="relative z-10 flex items-center gap-2">
-                {createOrder.isPending ? "Илгээж байна..." : "Гал тогоонд захиалах"} <ArrowRight size={18} />
+                {createOrder.isPending ? "Илгээж байна..." : (
+                  paymentMethod === "bank" ? "Төлбөр хийж захиалах" : "Гал тогоонд захиалах"
+                )} <ArrowRight size={18} />
               </span>
               <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform" />
             </Button>
