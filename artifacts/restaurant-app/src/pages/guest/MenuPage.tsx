@@ -16,8 +16,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ShoppingBag, Plus, Minus, X,
   Clock, ArrowRight, ReceiptText, QrCode,
-  Banknote, Building2, AlertTriangle
+  Banknote, Building2, AlertTriangle, View
 } from "lucide-react";
+import "@google/model-viewer";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function GuestMenuPage() {
@@ -215,7 +216,9 @@ function MenuSection() {
 function MenuItemCard({ item }: { item: MenuItem }) {
   const { addToCart } = useStore();
   const { toast } = useToast();
+  const [showAR, setShowAR] = useState(false);
   const imgUrl = item.imageUrl || `${import.meta.env.BASE_URL}images/menu-placeholder.png`;
+  const modelUrl = (item as any).modelUrl as string | null;
 
   const handleAdd = () => {
     addToCart(item, 1);
@@ -227,31 +230,118 @@ function MenuItemCard({ item }: { item: MenuItem }) {
   };
 
   return (
-    <div className={`bg-card border border-white/5 rounded-2xl overflow-hidden flex shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ${!item.available ? 'opacity-50 grayscale' : ''}`}>
-      <div className="w-28 h-28 flex-shrink-0 bg-muted">
-        <img src={imgUrl} alt={item.name} className="w-full h-full object-cover" />
-      </div>
-      <div className="p-4 flex-1 flex flex-col justify-between">
-        <div>
-          <div className="flex justify-between items-start gap-2">
-            <h4 className="font-bold text-lg leading-tight">{item.name}</h4>
-            <span className="font-bold text-primary whitespace-nowrap">₮{item.price.toLocaleString()}</span>
+    <>
+      <div className={`bg-card border border-white/5 rounded-2xl overflow-hidden flex shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ${!item.available ? 'opacity-50 grayscale' : ''}`}>
+        <div className="w-28 h-28 flex-shrink-0 bg-muted relative">
+          <img src={imgUrl} alt={item.name} className="w-full h-full object-cover" />
+          {modelUrl && (
+            <button
+              onClick={() => setShowAR(true)}
+              className="absolute bottom-1 left-1 bg-black/70 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 hover:bg-primary transition-colors"
+            >
+              <View size={12} /> AR
+            </button>
+          )}
+        </div>
+        <div className="p-4 flex-1 flex flex-col justify-between">
+          <div>
+            <div className="flex justify-between items-start gap-2">
+              <h4 className="font-bold text-lg leading-tight">{item.name}</h4>
+              <span className="font-bold text-primary whitespace-nowrap">₮{item.price.toLocaleString()}</span>
+            </div>
+            {item.description && <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{item.description}</p>}
           </div>
-          {item.description && <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{item.description}</p>}
-        </div>
-        
-        <div className="mt-4 flex justify-end">
-          <Button 
-            size="sm" 
-            className="h-8 rounded-lg font-bold shadow-md shadow-primary/20"
-            disabled={!item.available}
-            onClick={handleAdd}
-          >
-            {item.available ? <><Plus size={14} className="mr-1" /> Нэмэх</> : "Дуусчээ"}
-          </Button>
+
+          <div className="mt-4 flex items-center justify-between">
+            {modelUrl && (
+              <button
+                onClick={() => setShowAR(true)}
+                className="text-xs text-primary font-semibold flex items-center gap-1 hover:underline"
+              >
+                <View size={14} /> 3D харах
+              </button>
+            )}
+            <div className={!modelUrl ? "ml-auto" : ""}>
+              <Button
+                size="sm"
+                className="h-8 rounded-lg font-bold shadow-md shadow-primary/20"
+                disabled={!item.available}
+                onClick={handleAdd}
+              >
+                {item.available ? <><Plus size={14} className="mr-1" /> Нэмэх</> : "Дуусчээ"}
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* AR 3D Viewer Modal */}
+      <AnimatePresence>
+        {showAR && modelUrl && (
+          <ARViewerModal modelUrl={modelUrl} itemName={item.name} onClose={() => setShowAR(false)} />
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+function ARViewerModal({ modelUrl, itemName, onClose }: { modelUrl: string; itemName: string; onClose: () => void }) {
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60]"
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+        className="fixed inset-4 md:inset-16 z-[60] bg-card rounded-3xl border border-white/10 shadow-2xl flex flex-col overflow-hidden"
+      >
+        {/* Header */}
+        <div className="p-4 border-b border-white/5 flex items-center justify-between bg-background/50">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
+              <View size={18} className="text-primary" />
+            </div>
+            <div>
+              <h3 className="font-bold text-lg">{itemName}</h3>
+              <p className="text-xs text-muted-foreground">3D загвар & AR</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 bg-white/5 rounded-full hover:bg-white/10 transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* 3D Viewer */}
+        <div className="flex-1 relative bg-gradient-to-b from-zinc-900 to-zinc-950">
+          {/* @ts-ignore */}
+          <model-viewer
+            src={modelUrl}
+            alt={`${itemName} 3D загвар`}
+            ar
+            ar-modes="webxr scene-viewer quick-look"
+            camera-controls
+            touch-action="pan-y"
+            auto-rotate
+            shadow-intensity="1"
+            style={{ width: "100%", height: "100%", minHeight: "300px" }}
+          >
+            <button slot="ar-button" className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-2xl font-bold shadow-xl shadow-primary/30 flex items-center gap-2 text-sm">
+              <View size={18} /> AR-аар харах
+            </button>
+          {/* @ts-ignore */}
+          </model-viewer>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-white/5 bg-background/50">
+          <p className="text-xs text-muted-foreground text-center">
+            Гар хурууаар эргүүлж, томруулж харна уу. "AR-аар харах" дарж ширээн дээрээ байрлуулна уу.
+          </p>
+        </div>
+      </motion.div>
+    </>
   );
 }
 

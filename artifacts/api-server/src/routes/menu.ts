@@ -42,18 +42,19 @@ router.get("/menu/items", async (_req, res) => {
 
 router.post("/menu/items", requireAuth, async (req, res) => {
   try {
-    const { categoryId, name, description, price, imageUrl, available, preparationTime } = req.body as {
+    const { categoryId, name, description, price, imageUrl, modelUrl, available, preparationTime } = req.body as {
       categoryId: number;
       name: string;
       description?: string;
       price: number;
       imageUrl?: string;
+      modelUrl?: string;
       available?: boolean;
       preparationTime?: number;
     };
     const [item] = await db
       .insert(menuItemsTable)
-      .values({ categoryId, name, description, price: String(price), imageUrl, available: available ?? true, preparationTime })
+      .values({ categoryId, name, description, price: String(price), imageUrl, modelUrl, available: available ?? true, preparationTime })
       .returning();
     res.status(201).json(item);
   } catch (err) {
@@ -69,6 +70,7 @@ router.patch("/menu/items/:itemId", requireAuth, async (req, res) => {
       description?: string;
       price?: number;
       imageUrl?: string;
+      modelUrl?: string;
       available?: boolean;
       preparationTime?: number;
     };
@@ -78,6 +80,7 @@ router.patch("/menu/items/:itemId", requireAuth, async (req, res) => {
     if (updates.description !== undefined) updateData.description = updates.description;
     if (updates.price !== undefined) updateData.price = String(updates.price);
     if (updates.imageUrl !== undefined) updateData.imageUrl = updates.imageUrl;
+    if (updates.modelUrl !== undefined) updateData.modelUrl = updates.modelUrl;
     if (updates.available !== undefined) updateData.available = updates.available;
     if (updates.preparationTime !== undefined) updateData.preparationTime = updates.preparationTime;
 

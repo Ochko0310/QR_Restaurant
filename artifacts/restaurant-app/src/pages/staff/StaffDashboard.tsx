@@ -19,7 +19,7 @@ import {
   QrCode, Clock, Printer, CheckCheck, X, Plus, Trash2,
   Wifi, WifiOff, TableProperties, Banknote, ArrowRight,
   CalendarDays, Download, Pencil, Users, ClipboardList,
-  Minus, Search, Building2, UserCheck, UserX,
+  Minus, Search, Building2, UserCheck, UserX, View,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
@@ -745,7 +745,9 @@ function AddItemForm({ categoryId, onClose, onDone }: {
   const [price, setPrice] = useState("");
   const [description, setDescription] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [modelUrl, setModelUrl] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [modelUploading, setModelUploading] = useState(false);
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -770,6 +772,30 @@ function AddItemForm({ categoryId, onClose, onDone }: {
     }
   };
 
+  const handleModelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setModelUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("model", file);
+      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const res = await fetch(`${base}/api/upload/model`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("upload failed");
+      const { url } = await res.json() as { url: string };
+      setModelUrl(url);
+      toast({ title: "3D загвар амжилттай оруулсан" });
+    } catch {
+      toast({ title: "3D загвар оруулж чадсангүй", variant: "destructive" });
+    } finally {
+      setModelUploading(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !price) return;
@@ -781,8 +807,9 @@ function AddItemForm({ categoryId, onClose, onDone }: {
           price: parseFloat(price),
           description: description.trim() || undefined,
           imageUrl: imageUrl || undefined,
+          modelUrl: modelUrl || undefined,
           available: true,
-        },
+        } as any,
       },
       {
         onSuccess: () => {
@@ -857,10 +884,41 @@ function AddItemForm({ categoryId, onClose, onDone }: {
             <span className="text-xs text-muted-foreground">JPG, PNG, WEBP, GIF, SVG, AVIF...</span>
           )}
         </div>
+
+        {/* 3D Model upload */}
+        <div className="flex items-center gap-3">
+          <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors
+            ${modelUploading ? "opacity-50 pointer-events-none" : "border-primary/30 hover:border-primary hover:text-primary"} bg-background`}>
+            <View size={14} />
+            {modelUploading ? "Байршуулж байна..." : modelUrl ? "3D солих" : "3D загвар (.glb)"}
+            <input
+              type="file"
+              accept=".glb,.gltf"
+              className="hidden"
+              onChange={handleModelChange}
+              disabled={modelUploading}
+            />
+          </label>
+          {modelUrl && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-primary font-semibold">AR бэлэн</span>
+              <button
+                type="button"
+                onClick={() => setModelUrl("")}
+                className="w-4 h-4 bg-destructive rounded-full flex items-center justify-center"
+              >
+                <X size={9} />
+              </button>
+            </div>
+          )}
+          {!modelUrl && !modelUploading && (
+            <span className="text-xs text-muted-foreground">GLB, GLTF файл</span>
+          )}
+        </div>
       </div>
       <div className="flex gap-2">
-        <Button type="submit" size="sm" className="flex-1" disabled={createItem.isPending || uploading}>
-          {createItem.isPending ? "Нэмж байна..." : "Нэмэх"}
+        <Button type="submit" size="sm" className="flex-1" disabled={createItem.isPending || uploading || modelUploading}>
+          {createItem.isPending ? "Нэмж бай��а..." : "Нэмэх"}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onClose}><X size={14} /></Button>
       </div>
@@ -870,7 +928,7 @@ function AddItemForm({ categoryId, onClose, onDone }: {
 
 // ── Menu item edit form ────────────────────────────────────────────────────────
 function EditItemForm({ item, onClose, onDone }: {
-  item: { id: number; name: string; price: string; description?: string | null; imageUrl?: string | null; available: boolean };
+  item: { id: number; name: string; price: string | number; description?: string | null; imageUrl?: string | null; modelUrl?: string | null; available: boolean };
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -881,7 +939,9 @@ function EditItemForm({ item, onClose, onDone }: {
   const [price, setPrice] = useState(String(Number(item.price)));
   const [description, setDescription] = useState(item.description ?? "");
   const [imageUrl, setImageUrl] = useState(item.imageUrl ?? "");
+  const [modelUrl, setModelUrl] = useState((item as any).modelUrl ?? "");
   const [uploading, setUploading] = useState(false);
+  const [modelUploading, setModelUploading] = useState(false);
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -906,6 +966,30 @@ function EditItemForm({ item, onClose, onDone }: {
     }
   };
 
+  const handleModelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setModelUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("model", file);
+      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const res = await fetch(`${base}/api/upload/model`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("upload failed");
+      const { url } = await res.json() as { url: string };
+      setModelUrl(url);
+      toast({ title: "3D загвар амжилттай оруулсан" });
+    } catch {
+      toast({ title: "3D загвар оруулж чадсангүй", variant: "destructive" });
+    } finally {
+      setModelUploading(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !price) return;
@@ -917,7 +1001,8 @@ function EditItemForm({ item, onClose, onDone }: {
           price: parseFloat(price),
           description: description.trim() || undefined,
           imageUrl: imageUrl || undefined,
-        },
+          modelUrl: modelUrl || undefined,
+        } as any,
       },
       {
         onSuccess: () => { toast({ title: "Хадгалагдлаа" }); onDone(); },
@@ -976,9 +1061,28 @@ function EditItemForm({ item, onClose, onDone }: {
             </div>
           )}
         </div>
+
+        {/* 3D Model upload */}
+        <div className="flex items-center gap-3">
+          <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors
+            ${modelUploading ? "opacity-50 pointer-events-none" : "border-primary/30 hover:border-primary hover:text-primary"} bg-background`}>
+            <View size={14} />
+            {modelUploading ? "Байршуулж байна..." : modelUrl ? "3D солих" : "3D загвар (.glb)"}
+            <input type="file" accept=".glb,.gltf" className="hidden" onChange={handleModelChange} disabled={modelUploading} />
+          </label>
+          {modelUrl && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-primary font-semibold">AR бэлэн</span>
+              <button type="button" onClick={() => setModelUrl("")}
+                className="w-4 h-4 bg-destructive rounded-full flex items-center justify-center">
+                <X size={9} />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       <div className="flex gap-2">
-        <Button type="submit" size="sm" className="flex-1" disabled={updateItem.isPending || uploading}>
+        <Button type="submit" size="sm" className="flex-1" disabled={updateItem.isPending || uploading || modelUploading}>
           {updateItem.isPending ? "Хадгалж байна..." : "Хадгалах"}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onClose}><X size={14} /></Button>

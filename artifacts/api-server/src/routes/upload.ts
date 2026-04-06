@@ -17,18 +17,19 @@ const storage = multer.diskStorage({
 });
 
 const ALLOWED_MIME_PREFIX = /^image\//;
-const ALLOWED_EXTENSIONS = new Set([
+const ALLOWED_IMAGE_EXTENSIONS = new Set([
   ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
   ".avif", ".bmp", ".tiff", ".tif", ".heic", ".heif",
   ".ico", ".jfif", ".pjpeg", ".pjp",
 ]);
+const ALLOWED_MODEL_EXTENSIONS = new Set([".glb", ".gltf"]);
 
 const upload = multer({
   storage,
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter(_req, file, cb) {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (ALLOWED_MIME_PREFIX.test(file.mimetype) || ALLOWED_EXTENSIONS.has(ext)) {
+    if (ALLOWED_MIME_PREFIX.test(file.mimetype) || ALLOWED_IMAGE_EXTENSIONS.has(ext)) {
       cb(null, true);
     } else {
       cb(new Error("Зөвхөн зургийн файл оруулна уу"));
@@ -36,9 +37,31 @@ const upload = multer({
   },
 });
 
+const modelUpload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ALLOWED_MODEL_EXTENSIONS.has(ext) || file.mimetype === "model/gltf-binary" || file.mimetype === "model/gltf+json" || file.mimetype === "application/octet-stream") {
+      cb(null, true);
+    } else {
+      cb(new Error("Зөвхөн .glb эсвэл .gltf файл оруулна уу"));
+    }
+  },
+});
+
 const router = Router();
 
 router.post("/upload/image", requireAuth, upload.single("image"), (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ error: "no_file", message: "Файл олдсонгүй" });
+    return;
+  }
+  const url = `/api/uploads/${req.file.filename}`;
+  res.json({ url });
+});
+
+router.post("/upload/model", requireAuth, modelUpload.single("model"), (req, res) => {
   if (!req.file) {
     res.status(400).json({ error: "no_file", message: "Файл олдсонгүй" });
     return;
