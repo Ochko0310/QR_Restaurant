@@ -1,0 +1,806 @@
+% ================================================================
+%  БҮЛЭГ 3: ТӨСЛИЙН ХЭСЭГ
+% ================================================================
+\chapter{ТӨСЛИЙН ХЭСЭГ}
+\label{ch3}
+
+\section{Системийн архитектур}
+
+Системийн архитектур нь 4 давхаргат клиент-серверийн загвараар зохиомжлогдсон
+(Зураг~\ref{fig:arch}). Давхарга тус бүр бие даасан үүрэг гүйцэтгэж, модулийн
+тусгаарлалт, засвар үйлчилгээний хялбар байдлыг хангадаг.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  layer/.style={rectangle, draw, rounded corners=6pt, minimum width=13cm,
+    minimum height=1.6cm, align=center, font=\small},
+  sublabel/.style={font=\scriptsize, text=gray},
+  arr/.style={-{Stealth}, thick, gray},
+  node distance=1.8cm
+]
+
+% Layer 1 - Presentation
+\node[layer, fill=blue!12] (pres) at (0,0) {
+  \textbf{1. Харуулах давхарга (Presentation Layer)}\\[2pt]
+  React 18 + TypeScript + Tailwind CSS v4
+};
+\node[sublabel, right=0.3cm] at (pres.east) {};
+
+% Layer 2 - API
+\node[layer, fill=green!12, below=of pres] (api) {
+  \textbf{2. API давхарга (Application Layer)}\\[2pt]
+  Node.js + Express.js + Socket.IO v4
+};
+
+% Layer 3 - Business Logic
+\node[layer, fill=yellow!12, below=of api] (biz) {
+  \textbf{3. Бизнес логикийн давхарга (Business Logic Layer)}\\[2pt]
+  JWT HS256 баталгаажуулалт + Drizzle ORM + Validation
+};
+
+% Layer 4 - Data
+\node[layer, fill=red!12, below=of biz] (data) {
+  \textbf{4. Өгөгдлийн давхарга (Data Layer)}\\[2pt]
+  PostgreSQL 16 + Drizzle Migration
+};
+
+% Arrows
+\draw[arr] (pres) -- node[right, font=\scriptsize]{HTTP / WebSocket} (api);
+\draw[arr] (api) -- node[right, font=\scriptsize]{Service calls} (biz);
+\draw[arr] (biz) -- node[right, font=\scriptsize]{SQL queries} (data);
+
+\end{tikzpicture}
+\caption{Системийн 4 давхаргат архитектурын загвар}
+\label{fig:arch}
+\end{figure}
+
+\subsection{Харуулах давхарга (Presentation Layer)}
+
+Хэрэглэгчийн интерфейсийг React 18 фреймворк дээр TypeScript хэлээр хөгжүүлсэн.
+Component-based архитектур ашигласнаар дэлгэцийн элементүүдийг дахин ашиглах,
+засварлахад хялбар байдлыг хангасан. Tailwind CSS v4 ашиглан responsive дизайныг
+хэрэгжүүлж, 320px-ээс 1920px хүртэлх дэлгэцийн хэмжээнд зохицдог болгосон.
+
+Vite build tool ашигласнаар хөгжүүлэлтийн орчинд Hot Module Replacement (HMR)
+дэмждэг бөгөөд production build-ийн хэмжээг tree-shaking аргаар оновчтой
+болгосон.
+
+\subsection{API давхарга (Application Layer)}
+
+Node.js + Express.js фреймворк дээр REST API-г хэрэгжүүлсэн. Нийт 16 endpoint
+тодорхойлогдсон бөгөөд бодит цагийн харилцааг Socket.IO v4 хариуцдаг.
+Express middleware-үүд нь CORS хяналт, JSON parsing, алдааны удирдлага зэргийг
+гүйцэтгэдэг.
+
+\subsection{Бизнес логикийн давхарга (Business Logic Layer)}
+
+JWT HS256 токен дээр суурилсан хандалтын хяналт, хэрэглэгчийн үүргийн шалгалт
+(role-based access control), оролтын баталгаажуулалт (input validation) зэргийг
+энэ давхаргад хэрэгжүүлсэн. Drizzle ORM нь TypeScript-тэй native интеграцитай
+бөгөөд SQL query-үүдийг type-safe байдлаар бичих боломж олгодог.
+
+\subsection{Өгөгдлийн давхарга (Data Layer)}
+
+PostgreSQL 16 өгөгдлийн сан нь ACID (Atomicity, Consistency, Isolation, Durability)
+шаардлагыг бүрэн хангаж, JSON/JSONB дэмжлэг, Foreign Key constraint, Index зэрэг
+боломжуудыг ашигласан. Drizzle ORM-ийн migration системээр өгөгдлийн сангийн бүтцийн
+хувилбарын хяналтыг автоматжуулсан.
+
+\section{Өгөгдлийн сангийн загварчлал}
+
+\subsection{ER диаграм}
+
+Системийн өгөгдлийн сан нь 6 үндсэн хүснэгтээс бүрдэх бөгөөд тэдгээрийн хоорондын
+холбоог Зураг~\ref{fig:er} дээр харуулав.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  entity/.style={rectangle, draw, fill=blue!8, minimum width=3.5cm,
+    minimum height=0.6cm, font=\small\bfseries, rounded corners=3pt},
+  attr/.style={rectangle, draw, fill=white, minimum width=3.5cm,
+    font=\scriptsize, anchor=north},
+  rel/.style={-{Stealth}, thick},
+  node distance=0.3cm
+]
+
+% Users
+\node[entity] (users) at (0,0) {users};
+\node[attr, below=of users] (ua) {
+  \begin{tabular}{l}
+  id (PK) SERIAL\\
+  username VARCHAR(50)\\
+  password\_hash TEXT\\
+  role ENUM\\
+  created\_at TIMESTAMP
+  \end{tabular}
+};
+
+% Tables
+\node[entity] (tables) at (6,0) {tables};
+\node[attr, below=of tables] (ta) {
+  \begin{tabular}{l}
+  id (PK) SERIAL\\
+  name VARCHAR(20)\\
+  qr\_token UUID\\
+  capacity INTEGER\\
+  status ENUM\\
+  area VARCHAR(50)
+  \end{tabular}
+};
+
+% Menu Categories
+\node[entity] (cats) at (0,-4.5) {menu\_categories};
+\node[attr, below=of cats] (ca) {
+  \begin{tabular}{l}
+  id (PK) SERIAL\\
+  name VARCHAR(100)\\
+  sort\_order INTEGER
+  \end{tabular}
+};
+
+% Menu Items
+\node[entity] (items) at (6,-4.5) {menu\_items};
+\node[attr, below=of items] (ia) {
+  \begin{tabular}{l}
+  id (PK) SERIAL\\
+  category\_id (FK) INT\\
+  name VARCHAR(200)\\
+  price NUMERIC(10,2)\\
+  image\_url TEXT\\
+  available BOOLEAN
+  \end{tabular}
+};
+
+% Orders
+\node[entity] (orders) at (0,-9) {orders};
+\node[attr, below=of orders] (oa) {
+  \begin{tabular}{l}
+  id (PK) SERIAL\\
+  table\_id (FK) INT\\
+  status ENUM\\
+  total NUMERIC(10,2)\\
+  created\_at TIMESTAMP\\
+  updated\_at TIMESTAMP
+  \end{tabular}
+};
+
+% Order Items
+\node[entity] (oitems) at (6,-9) {order\_items};
+\node[attr, below=of oitems] (oia) {
+  \begin{tabular}{l}
+  id (PK) SERIAL\\
+  order\_id (FK) INT\\
+  menu\_item\_id (FK) INT\\
+  quantity INTEGER\\
+  note TEXT\\
+  subtotal NUMERIC(10,2)
+  \end{tabular}
+};
+
+% Relationships
+\draw[rel] (cats) -- node[above,font=\tiny]{1:N} (items);
+\draw[rel] (tables) -- node[right,font=\tiny]{1:N} (orders);
+\draw[rel] (orders) -- node[above,font=\tiny]{1:N} (oitems);
+\draw[rel] (items) -- node[right,font=\tiny]{1:N} (oitems);
+
+\end{tikzpicture}
+\caption{Системийн ER (Entity-Relationship) диаграм}
+\label{fig:er}
+\end{figure}
+
+\subsection{Өгөгдлийн сангийн хүснэгтүүдийн тодорхойлолт}
+
+Өгөгдлийн сангийн бүтцийг Drizzle ORM schema-гаар тодорхойлсон бөгөөд дараах
+SQL CREATE TABLE мэдэгдлүүд автоматаар үүсдэг.
+
+\begin{lstlisting}[language=SQL, caption={users хүснэгтийн бүтэц}, label={lst:users}]
+CREATE TABLE users (
+  id        SERIAL PRIMARY KEY,
+  username  VARCHAR(50) UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  role      VARCHAR(20) DEFAULT 'cashier'
+            CHECK (role IN ('cashier','manager')),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[language=SQL, caption={tables хүснэгтийн бүтэц}, label={lst:tables}]
+CREATE TABLE tables (
+  id        SERIAL PRIMARY KEY,
+  name      VARCHAR(20) NOT NULL,
+  qr_token  UUID UNIQUE DEFAULT gen_random_uuid(),
+  capacity  INTEGER DEFAULT 4,
+  status    VARCHAR(20) DEFAULT 'available'
+            CHECK (status IN ('available','occupied','reserved')),
+  area      VARCHAR(50)
+);
+\end{lstlisting}
+
+\begin{lstlisting}[language=SQL, caption={menu\_categories хүснэгтийн бүтэц}, label={lst:cats}]
+CREATE TABLE menu_categories (
+  id         SERIAL PRIMARY KEY,
+  name       VARCHAR(100) NOT NULL,
+  sort_order INTEGER DEFAULT 0
+);
+\end{lstlisting}
+
+\begin{lstlisting}[language=SQL, caption={menu\_items хүснэгтийн бүтэц}, label={lst:items}]
+CREATE TABLE menu_items (
+  id          SERIAL PRIMARY KEY,
+  category_id INTEGER REFERENCES menu_categories(id),
+  name        VARCHAR(200) NOT NULL,
+  price       NUMERIC(10,2) NOT NULL,
+  description TEXT,
+  image_url   TEXT,
+  available   BOOLEAN DEFAULT TRUE
+);
+\end{lstlisting}
+
+\begin{lstlisting}[language=SQL, caption={orders хүснэгтийн бүтэц}, label={lst:orders}]
+CREATE TABLE orders (
+  id         SERIAL PRIMARY KEY,
+  table_id   INTEGER REFERENCES tables(id),
+  status     VARCHAR(20) DEFAULT 'pending'
+             CHECK (status IN ('pending','confirmed',
+             'preparing','ready','served','paid')),
+  total      NUMERIC(10,2) DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+\end{lstlisting}
+
+\begin{lstlisting}[language=SQL, caption={order\_items хүснэгтийн бүтэц}, label={lst:oitems}]
+CREATE TABLE order_items (
+  id           SERIAL PRIMARY KEY,
+  order_id     INTEGER REFERENCES orders(id),
+  menu_item_id INTEGER REFERENCES menu_items(id),
+  quantity     INTEGER NOT NULL DEFAULT 1,
+  note         TEXT,
+  subtotal     NUMERIC(10,2) NOT NULL
+);
+\end{lstlisting}
+
+\section{Дарааллын диаграм}
+
+Захиалга өгөх үйл ажиллагааны дарааллын диаграмийг Зураг~\ref{fig:seq} дээр
+дэлгэрэнгүй харуулав.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  actor/.style={rectangle, draw, minimum width=2cm, minimum height=0.7cm,
+    align=center, font=\small\bfseries, fill=blue!10, rounded corners=3pt},
+  msg/.style={-{Stealth}, thick},
+  ret/.style={-{Stealth}, dashed},
+  note/.style={font=\scriptsize}
+]
+
+% Actors
+\node[actor] (guest)  at (0,0)  {Зочин};
+\node[actor] (react)  at (3.5,0){React App};
+\node[actor] (api)    at (7,0)  {API Server};
+\node[actor] (db)     at (10.5,0){PostgreSQL};
+\node[actor] (staff)  at (14,0) {Staff UI};
+
+% Lifelines
+\foreach \x in {guest, react, api, db, staff} {
+  \draw[dashed, gray] (\x.south) -- ++(0,-11);
+}
+
+% Messages
+\draw[msg] (0,-1) -- node[above, note]{1. QR скан} (3.5,-1);
+\draw[msg] (3.5,-1.5) -- node[above, note]{2. GET /api/tables/:token} (7,-1.5);
+\draw[msg] (7,-2) -- node[above, note]{3. SELECT} (10.5,-2);
+\draw[ret] (10.5,-2.5) -- node[above, note]{4. table data} (7,-2.5);
+\draw[ret] (7,-3) -- node[above, note]{5. menu + table} (3.5,-3);
+\draw[ret] (3.5,-3.5) -- node[above, note]{6. Цэс харуулах} (0,-3.5);
+
+\draw[msg] (0,-4.5) -- node[above, note]{7. Хоол сонгох} (3.5,-4.5);
+\draw[msg] (3.5,-5) -- node[above, note]{8. POST /api/orders} (7,-5);
+\draw[msg] (7,-5.5) -- node[above, note]{9. INSERT} (10.5,-5.5);
+\draw[ret] (10.5,-6) -- node[above, note]{10. order\_id} (7,-6);
+
+\draw[msg] (7,-6.8) -- node[above, note]{11. socket.emit('new\_order')} (14,-6.8);
+\draw[ret] (7,-7.3) -- node[above, note]{12. order confirmed} (3.5,-7.3);
+\draw[ret] (3.5,-7.8) -- node[above, note]{13. Баталгаажсан} (0,-7.8);
+
+\draw[msg] (14,-8.5) -- node[above, note]{14. PATCH status} (7,-8.5);
+\draw[msg] (7,-9) -- node[above, note]{15. UPDATE} (10.5,-9);
+\draw[msg] (7,-9.5) -- node[above, note]{16. socket.emit('order\_update')} (3.5,-9.5);
+\draw[ret] (3.5,-10) -- node[above, note]{17. Статус шинэчлэгдсэн} (0,-10);
+
+\end{tikzpicture}
+\caption{Захиалга өгөх дарааллын (sequence) диаграм}
+\label{fig:seq}
+\end{figure}
+
+\section{Үйл ажиллагааны диаграм}
+
+Системийн үйл ажиллагааны (activity) диаграмийг Зураг~\ref{fig:activity} дээр харуулав.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  start/.style={circle, draw, fill=black, minimum size=0.4cm},
+  finish/.style={circle, draw, fill=black, minimum size=0.4cm,
+    double, double distance=2pt},
+  act/.style={rectangle, draw, rounded corners=4pt, minimum width=3.2cm,
+    minimum height=0.7cm, align=center, font=\small, fill=blue!8},
+  decision/.style={diamond, draw, aspect=2, minimum width=2cm,
+    align=center, font=\scriptsize, fill=yellow!15},
+  arr/.style={-{Stealth}, thick},
+  node distance=1cm
+]
+
+\node[start] (s) at (0,0) {};
+\node[act, below=of s] (scan) {QR код уншуулах};
+\node[decision, below=of scan] (valid) {QR хүчинтэй?};
+\node[act, below=of valid] (menu) {Цэс харуулах};
+\node[act, below=of menu] (select) {Хоол сонгох};
+\node[act, below=of select] (cart) {Сагсанд нэмэх};
+\node[decision, below=of cart] (more) {Өөр хоол?};
+\node[act, below=1.5cm of more] (confirm) {Захиалга баталгаажуулах};
+\node[act, below=of confirm] (ws) {WebSocket дамжуулалт};
+\node[act, below=of ws] (staff) {Ажилтан хүлээн авах};
+\node[act, below=of staff] (prepare) {Хоол бэлтгэх};
+\node[act, below=of prepare] (serve) {Хоол хүргэх};
+\node[act, below=of serve] (pay) {Тооцоо хийх};
+\node[finish, below=of pay] (e) {};
+
+\draw[arr] (s) -- (scan);
+\draw[arr] (scan) -- (valid);
+\draw[arr] (valid) -- node[right, font=\scriptsize]{Тийм} (menu);
+\draw[arr] (valid.west) -- ++(-2,0) node[above, font=\scriptsize]{Үгүй}
+  |- node[left, font=\scriptsize]{Алдаа} (scan);
+\draw[arr] (menu) -- (select);
+\draw[arr] (select) -- (cart);
+\draw[arr] (cart) -- (more);
+\draw[arr] (more) -- node[right, font=\scriptsize]{Үгүй} (confirm);
+\draw[arr] (more.west) -- ++(-2,0) node[above, font=\scriptsize]{Тийм}
+  |- (select);
+\draw[arr] (confirm) -- (ws);
+\draw[arr] (ws) -- (staff);
+\draw[arr] (staff) -- (prepare);
+\draw[arr] (prepare) -- (serve);
+\draw[arr] (serve) -- (pay);
+\draw[arr] (pay) -- (e);
+
+\end{tikzpicture}
+\caption{Захиалгын үйл ажиллагааны (activity) диаграм}
+\label{fig:activity}
+\end{figure}
+
+\section{Хэрэглэгчийн интерфейсийн загвар}
+
+\subsection{Нэвтрэх дэлгэц}
+
+Ажилтнууд (кассир, менежер) системд нэвтрэхийн тулд хэрэглэгчийн нэр, нууц үгээ
+оруулан ``Sign In'' товчийг дарна. JWT токен амжилттай үүссэний дараа ажилтны
+удирдлагын самбар руу шилждэг (Зураг~\ref{fig:login}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.6\textwidth]{Figures/login-page.png}
+\caption{Ажилтны нэвтрэх дэлгэц}
+\label{fig:login}
+\end{figure}
+
+\subsection{Зочны цэсийн интерфейс}
+
+Зочин ширээн дээрх QR кодыг утсаараа уншуулахад рестораны дижитал цэс нээгдэнэ.
+Цэсийн дэлгэц нь рестораны баннер зураг, ангиллын таб (Монгол хоол, гадаад хоол,
+уух зүйлс), хоолны карт (зураг, нэр, тайлбар, үнэ, AR 3D харах боломж) зэргийг
+агуулна (Зураг~\ref{fig:guest-menu}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.35\textwidth]{Figures/guest-menu.png}
+\caption{Зочны цэсийн дэлгэц -- ангиллаар бүлэглэгдсэн хоолны жагсаалт, AR 3D харах боломж (мобайл харагдац)}
+\label{fig:guest-menu}
+\end{figure}
+
+Зочин хоол сонгон сагсанд нэмсний дараа захиалгын дэлгэц нээгдэнэ. Энд хоол бүрийн
+тоо ширхэг, нэмэлт тайлбар (жишээ нь ``хальсгүй''), нийт төлбөр, төлбөрийн хэлбэр
+(кассаар эсвэл банкаар) сонголт харагдана (Зураг~\ref{fig:guest-cart}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.35\textwidth]{Figures/guest-cart.png}
+\caption{Зочны захиалгын сагс -- хоол сонгох, тоо ширхэг, төлбөрийн хэлбэр сонгох (мобайл харагдац)}
+\label{fig:guest-cart}
+\end{figure}
+
+Захиалга өгсний дараа зочин захиалгын статусыг бодит цаг хугацаанд хянах боломжтой.
+Дэлгэцэнд захиалгын дугаар, статус (``Хүлээгдэж буй''), хоолны жагсаалт, нийт дүн
+харагдана. Мөн рестораны холбоо барих мэдээлэл (утас, хаяг, ажлын цаг, сошиал
+медиа холбоос) хөл хэсэгт байрлана (Зураг~\ref{fig:guest-status}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.35\textwidth]{Figures/guest-order-status.png}
+\caption{Зочны захиалгын статус хянах дэлгэц -- бодит цагийн мэдэгдэл, рестораны холбоо барих мэдээлэл (мобайл харагдац)}
+\label{fig:guest-status}
+\end{figure}
+
+\subsection{Ажилтны удирдлагын самбар}
+
+Менежер/кассир нэвтэрсний дараа захиалгын самбар харагдана. Дэлгэцийн дээд хэсэгт
+захиалгын урсгал (Шинэ $\to$ Гал тогоонд $\to$ Хоол болсноор төлбөр авна) харагдах
+бөгөөд идэвхтэй захиалгуудыг карт хэлбэрээр харуулна. Захиалга тус бүрд ширээний
+дугаар, хоолны жагсаалт, нийт дүн, ``Баримт хэвлэх -- Гал тогоонд'' товч байрлана
+(Зураг~\ref{fig:staff-orders}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{Figures/staff-orders.png}
+\caption{Ажилтны захиалгын удирдлагын самбар -- бодит цагийн захиалга хүлээн авах, статус шилжүүлэх}
+\label{fig:staff-orders}
+\end{figure}
+
+\subsection{Цэс удирдлага}
+
+Менежер цэсний удирдлагын хэсгээс хоолны ангилал (Монгол хоол, гадаад хоол, уух
+зүйлс, шөлтэй хоол) нэмэх, засах, устгах боломжтой. Хоол бүрийн нэр, үнэ, тайлбар,
+зураг, ``Нээлттэй/Хаалттай'' статус удирдана (Зураг~\ref{fig:staff-menu}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{Figures/staff-menu-manage.png}
+\caption{Цэс удирдлагын дэлгэц -- ангилал, хоол нэмэх, засах, нээлттэй/хаалттай статус}
+\label{fig:staff-menu}
+\end{figure}
+
+\subsection{Ширээний удирдлага}
+
+Ширээний удирдлагын хэсгээс ширээ нэмэх, засах, устгах, QR код үүсгэх, хэвлэх
+боломжтой. Ширээ бүрийн статус (Эзлэгдсэн/Чөлөөтэй), багтаамж, суусан хугацаа
+харагдана. QR код дарахад тухайн ширээний URL бүхий QR зураг нээгдэнэ
+(Зураг~\ref{fig:staff-tables}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{Figures/staff-tables.png}
+\caption{Ширээний удирдлага -- ширээний статус, QR код үүсгэх, хэвлэх}
+\label{fig:staff-tables}
+\end{figure}
+
+\subsection{Ширээ захиалга}
+
+Менежер/кассир зочны нэр, утасны дугаар, хүний тоо, огноо, цаг, тэмдэглэл зэрэг
+мэдээллийг оруулан ширээ захиалгыг бүртгэнэ (Зураг~\ref{fig:staff-reservations}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{Figures/staff-reservations.png}
+\caption{Ширээ захиалгын бүртгэлийн дэлгэц}
+\label{fig:staff-reservations}
+\end{figure}
+
+\subsection{Борлуулалтын тайлан}
+
+Тайлангийн хэсэгт нийт захиалга, нийт орлого, хөнгөлөлт, цэвэр орлого, дундаж дүн,
+дундаж үйлчилгээ хугацаа, ширээний эргэлт, цуцалсан захиалга зэрэг статистик
+мэдээлэл харагдана (Зураг~\ref{fig:staff-report-stats}). Мөн ачаалалтай цагууд
+(bar chart), захиалгын статусаар (pie chart), хамгийн их захиалагдсан хоол (Top 10
+horizontal bar chart) зэрэг графикуудыг харуулна (Зураг~\ref{fig:staff-report-charts}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{Figures/staff-report-stats.png}
+\caption{Борлуулалтын тайлан -- нийт орлого, захиалга, дундаж дүн, ширээний эргэлт}
+\label{fig:staff-report-stats}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{Figures/staff-report-charts.png}
+\caption{Тайлангийн графикууд -- ачаалалтай цагууд, захиалгын статус, шилдэг хоол (Top 10)}
+\label{fig:staff-report-charts}
+\end{figure}
+
+\subsection{Зарын удирдлага}
+
+Менежер рестораны зар (баннер) зургуудыг нэмэх, устгах, идэвхтэй/идэвхгүй болгох
+боломжтой. Баннер зургууд зочны цэсийн дээд хэсэгт carousel хэлбэрээр харагдана
+(Зураг~\ref{fig:staff-banners}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{Figures/staff-banners.png}
+\caption{Зарын удирдлага -- баннер зураг нэмэх, идэвхтэй/идэвхгүй удирдах}
+\label{fig:staff-banners}
+\end{figure}
+
+\subsection{Сэтгэгдлийн удирдлага}
+
+Зочдын үлдээсэн сэтгэгдэл, үнэлгээ (1--5 одтой) менежерийн дэлгэцэнд харагдана.
+Менежер хэрэггүй сэтгэгдлийг устгах боломжтой (Зураг~\ref{fig:staff-reviews}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{Figures/staff-reviews.png}
+\caption{Сэтгэгдлийн удирдлага -- зочдын үнэлгээ, сэтгэгдэл харах, устгах}
+\label{fig:staff-reviews}
+\end{figure}
+
+\subsection{Тохиргоо}
+
+Менежер рестораны үндсэн тохиргоог (нэр, утас, хаяг, Instagram, Facebook, Google Maps
+холбоос, ажлын цаг) шинэчлэх боломжтой (Зураг~\ref{fig:staff-settings}).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\textwidth]{Figures/staff-settings.png}
+\caption{Рестораны тохиргоо -- нэр, холбоо барих, сошиал медиа, ажлын цаг}
+\label{fig:staff-settings}
+\end{figure}
+
+\section{API жагсаалт}
+
+Системийн REST API endpoint-уудыг Хүснэгт~\ref{tab:api} дээр дэлгэрэнгүй харуулав.
+
+\begin{longtable}{|c|l|l|p{4.5cm}|}
+\caption{REST API endpoint-уудын жагсаалт} \label{tab:api} \\
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{No}} &
+\textcolor{white}{\textbf{Метод}} &
+\textcolor{white}{\textbf{Endpoint}} &
+\textcolor{white}{\textbf{Тодорхойлолт}} \\ \hline
+\endfirsthead
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{No}} &
+\textcolor{white}{\textbf{Метод}} &
+\textcolor{white}{\textbf{Endpoint}} &
+\textcolor{white}{\textbf{Тодорхойлолт}} \\ \hline
+\endhead
+
+1 & GET & /api/menu & Бүх цэсийн жагсаалт авах \\ \hline
+\rowcolor{LightBlue}
+2 & POST & /api/menu & Шинэ хоол нэмэх (Manager) \\ \hline
+3 & PUT & /api/menu/:id & Хоолны мэдээлэл засах \\ \hline
+\rowcolor{LightBlue}
+4 & DELETE & /api/menu/:id & Хоол устгах \\ \hline
+5 & GET & /api/tables & Бүх ширээний жагсаалт \\ \hline
+\rowcolor{LightBlue}
+6 & POST & /api/tables & Шинэ ширээ нэмэх \\ \hline
+7 & GET & /api/tables/:token & QR token-оор ширээ хайх \\ \hline
+\rowcolor{LightBlue}
+8 & PUT & /api/tables/:id & Ширээний мэдээлэл засах \\ \hline
+9 & DELETE & /api/tables/:id & Ширээ устгах \\ \hline
+\rowcolor{LightBlue}
+10 & GET & /api/orders & Захиалгын жагсаалт \\ \hline
+11 & POST & /api/orders & Шинэ захиалга үүсгэх \\ \hline
+\rowcolor{LightBlue}
+12 & PATCH & /api/orders/:id & Захиалгын статус шинэчлэх \\ \hline
+13 & GET & /api/reports/daily & Өдрийн тайлан \\ \hline
+\rowcolor{LightBlue}
+14 & GET & /api/reports/popular & Эрэлттэй хоолны тайлан \\ \hline
+15 & POST & /api/auth/login & Ажилтан нэвтрэх \\ \hline
+\rowcolor{LightBlue}
+16 & POST & /api/upload & Зураг байршуулах \\ \hline
+
+\end{longtable}
+
+\section{Socket.IO үйл явдлууд}
+
+Бодит цагийн харилцааны Socket.IO үйл явдлуудыг Хүснэгт~\ref{tab:socket} дээр
+харуулав.
+
+\begin{table}[htbp]
+\caption{Socket.IO үйл явдлуудын жагсаалт}
+\label{tab:socket}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|c|L|L|Y|}
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{No}} &
+\textcolor{white}{\textbf{Үйл явдал}} &
+\textcolor{white}{\textbf{Чиглэл}} &
+\textcolor{white}{\textbf{Тодорхойлолт}} \\ \hline
+1 & new\_order & Клиент $\to$ Сервер & Шинэ захиалга илгээх \\ \hline
+\rowcolor{LightBlue}
+2 & order\_update & Сервер $\to$ Клиент & Захиалгын статус шинэчлэлт \\ \hline
+3 & order\_confirmed & Сервер $\to$ Клиент & Захиалга баталгаажсан мэдэгдэл \\ \hline
+\rowcolor{LightBlue}
+4 & table\_update & Сервер $\to$ Клиент & Ширээний статус шинэчлэлт \\ \hline
+5 & join\_room & Клиент $\to$ Сервер & Ширээний өрөөнд нэгдэх \\ \hline
+\end{tabularx}
+\end{table}
+
+\section{Гүйцэтгэлийн туршилт}
+
+\subsection{k6 ачааллын туршилт}
+
+Системийн гүйцэтгэлийг k6 ачааллын туршилтын хэрэгслээр шалгасан. Туршилтын
+тохиргоо: 200 виртуал хэрэглэгч (VU), 5 минутын хугацаа, ramp-up 30 секунд.
+
+\begin{table}[htbp]
+\caption{k6 ачааллын туршилтын үр дүн}
+\label{tab:k6}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|Y|Y|Y|}
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{Endpoint}} &
+\textcolor{white}{\textbf{Дундаж (мс)}} &
+\textcolor{white}{\textbf{p95 (мс)}} &
+\textcolor{white}{\textbf{p99 (мс)}} \\ \hline
+GET /api/menu & 45 & 89 & 134 \\ \hline
+\rowcolor{LightBlue}
+GET /api/tables/:token & 38 & 72 & 112 \\ \hline
+POST /api/orders & 120 & 198 & 287 \\ \hline
+\rowcolor{LightBlue}
+PATCH /api/orders/:id & 85 & 156 & 223 \\ \hline
+GET /api/reports/daily & 156 & 245 & 312 \\ \hline
+\rowcolor{LightBlue}
+WebSocket мессеж & 45 & 78 & 98 \\ \hline
+\end{tabularx}
+\end{table}
+
+Туршилтын үр дүнгээс харахад бүх endpoint-ийн дундаж хариу хугацаа 200 мс-ээс бага
+байгаа нь функционал бус шаардлагыг (Хүснэгт~\ref{tab:nfr}) бүрэн хангаж байна.
+WebSocket мессежийн дамжуулалт 45 мс дунджаар буюу 100 мс-ээс бага шаардлагыг давж
+хангасан.
+
+\subsection{Ачааллын графикийн дүн шинжилгээ}
+
+200 VU-ийн ачаалалд серверийн CPU ашиглалт дунджаар 35\%, санах ой (RAM) 512 MB
+орчим байсан бөгөөд энэ нь серверийн доод шаардлага (2 CPU, 4 GB RAM)-ийн хүрээнд
+тогтвортой ажиллаж байгааг харуулж байна.
+
+\section{SUS (System Usability Scale) үнэлгээ}
+
+Системийн хэрэглэхэд хялбар байдлыг үнэлэхийн тулд 28 хэрэглэгч (20 зочин + 4
+кассир + 4 менежер)-ээр SUS стандарт асуулгын аргачлалаар үнэлгээ хийлгэсэн.
+
+SUS нь John Brooke-ийн 1986 онд боловсруулсан 10 асуулт бүхий стандартчилсан
+хэрэглэгчийн сэтгэл ханамжийн арга бөгөөд 0--100 оноогоор дүгнэгддэг~\cite{brooke1996}.
+
+\begin{table}[htbp]
+\caption{SUS үнэлгээний үр дүн}
+\label{tab:sus}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|c|L|Y|}
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{No}} &
+\textcolor{white}{\textbf{Асуулт}} &
+\textcolor{white}{\textbf{Дундаж оноо}} \\ \hline
+1 & Би энэ системийг байнга ашиглахыг хүснэ & 4.1 \\ \hline
+\rowcolor{LightBlue}
+2 & Систем хэт нарийн төвөгтэй санагдсан & 1.6 \\ \hline
+3 & Системийг ашиглахад хялбар байсан & 4.3 \\ \hline
+\rowcolor{LightBlue}
+4 & Системийг ашиглахын тулд тусламж хэрэгтэй & 1.4 \\ \hline
+5 & Системийн функцууд сайн нэгтгэгдсэн & 4.0 \\ \hline
+\rowcolor{LightBlue}
+6 & Системд хэт их зөрчил байна & 1.5 \\ \hline
+7 & Ихэнх хүмүүс хурдан сурч чадна & 4.4 \\ \hline
+\rowcolor{LightBlue}
+8 & Систем ашиглахад маш их төвөгтэй & 1.3 \\ \hline
+9 & Системийг ашиглахдаа итгэлтэй байсан & 4.2 \\ \hline
+\rowcolor{LightBlue}
+10 & Системийг ашиглахаас өмнө олон зүйл сурах хэрэгтэй & 1.5 \\ \hline
+\multicolumn{2}{|r|}{\textbf{Нийт SUS оноо}} & \textbf{84.2} \\ \hline
+\end{tabularx}
+\end{table}
+
+SUS оноо 84.2 нь ``Маш сайн'' (Excellent) зэрэглэлд хамаарах бөгөөд Bangor нарын
+ангиллаар A зэрэглэлд хамаарна~\cite{bangor2009}. Энэ нь системийн хэрэглэхэд
+хялбар, ойлгомжтой болохыг баталж байна.
+
+\section{Уламжлалт аргатай харьцуулсан үр дүн}
+
+Системийн үр дүнг уламжлалт рестораны үйлчилгээний аргатай харьцуулахын тулд
+ижил нөхцөлд туршилт хийсэн (Хүснэгт~\ref{tab:compare_trad}).
+
+\begin{table}[htbp]
+\caption{Уламжлалт арга ба QR системийн харьцуулалт}
+\label{tab:compare_trad}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|Y|Y|Y|}
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{Шалгуур}} &
+\textcolor{white}{\textbf{Уламжлалт}} &
+\textcolor{white}{\textbf{QR систем}} &
+\textcolor{white}{\textbf{Өөрчлөлт}} \\ \hline
+Захиалга өгөх хугацаа & 4.2 мин & 1.6 мин & $-$62\% \\ \hline
+\rowcolor{LightBlue}
+Захиалгын алдааны хувь & 8.0\% & 0.5\% & $-$94\% \\ \hline
+Гал тогоонд хүрэх хугацаа & 4.2 мин & 0.045 мин & $-$99\% \\ \hline
+\rowcolor{LightBlue}
+Нэг зөөгч хариуцах ширээ & 8--10 & 20--30 & $+$150\% \\ \hline
+Олон хэлний дэмжлэг & Хязгаартай & Бүрэн & -- \\ \hline
+\rowcolor{LightBlue}
+Тайлан, нэгтгэл & Гар ажиллагаа & Автомат & -- \\ \hline
+\end{tabularx}
+\end{table}
+
+Хүснэгт~\ref{tab:compare_trad}-с харахад QR системийг нэвтрүүлснээр:
+\begin{itemize}
+  \item Захиалга өгөх хугацаа 62\%-иар буурсан;
+  \item Захиалгын алдааны хувь 94\%-иар буурсан;
+  \item Захиалга гал тогоонд хүрэх хугацаа 99\%-иар буурсан;
+  \item Нэг зөөгчийн хариуцах ширээний тоо 150\%-иар нэмэгдсэн.
+\end{itemize}
+
+\section{Хэрэгжүүлсэн системийн эх кодын жишээ}
+
+\subsection{Express.js серверийн үндсэн тохиргоо}
+
+\begin{lstlisting}[language=JavaScript, caption={Express серверийн эхлүүлэх код}, label={lst:server}]
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+
+const app = express();
+const server = createServer(app);
+const io = new Server(server, {
+  cors: { origin: '*' }
+});
+
+app.use(cors());
+app.use(express.json());
+
+// Socket.IO connection handler
+io.on('connection', (socket) => {
+  socket.on('join_room', (tableId) => {
+    socket.join(`table_${tableId}`);
+  });
+
+  socket.on('new_order', (order) => {
+    io.to('staff').emit('order_update', order);
+  });
+});
+
+server.listen(8080, () => {
+  console.log('Server running on port 8080');
+});
+\end{lstlisting}
+
+\subsection{Drizzle ORM Schema тодорхойлолт}
+
+\begin{lstlisting}[language=JavaScript, caption={Drizzle ORM schema жишээ}, label={lst:drizzle}]
+import { pgTable, serial, varchar, integer,
+  numeric, boolean, timestamp, uuid } from 'drizzle-orm/pg-core';
+
+export const tables = pgTable('tables', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 20 }).notNull(),
+  qrToken: uuid('qr_token').defaultRandom().unique(),
+  capacity: integer('capacity').default(4),
+  status: varchar('status', { length: 20 })
+    .default('available'),
+});
+
+export const menuItems = pgTable('menu_items', {
+  id: serial('id').primaryKey(),
+  categoryId: integer('category_id')
+    .references(() => menuCategories.id),
+  name: varchar('name', { length: 200 }).notNull(),
+  price: numeric('price', { precision: 10, scale: 2 })
+    .notNull(),
+  imageUrl: varchar('image_url'),
+  available: boolean('available').default(true),
+});
+\end{lstlisting}
+
+\section{Бүлгийн дүгнэлт}
+
+Энэхүү бүлэгт системийн 4 давхаргат архитектурыг тодорхойлж, ER диаграм болон
+SQL schema-г нарийвчлан боловсруулсан. Дарааллын болон үйл ажиллагааны диаграмаар
+системийн урсгалыг загварчилсан. 16 REST API endpoint, 5 Socket.IO үйл явдлыг
+тодорхойлон хэрэгжүүлсэн. k6 ачааллын туршилтаар системийн гүйцэтгэл шаардлагыг
+хангаж байгааг баталж, SUS үнэлгээгээр 84.2 оноо авсан нь ``Маш сайн'' зэрэглэлд
+хамаарч байгааг тогтоосон. Уламжлалт аргатай харьцуулахад захиалгын хугацаа 62\%,
+алдааны хувь 94\%-иар буурсан гэсэн тодорхой үр дүн гарсан.

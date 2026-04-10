@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { menuCategoriesTable, menuItemsTable } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
-import { requireAuth } from "../lib/auth";
+import { requireAuth, requireRole } from "../lib/auth";
 
 const router = Router();
 
@@ -11,9 +11,17 @@ router.get("/menu/categories", async (_req, res) => {
     const categories = await db.select().from(menuCategoriesTable).orderBy(asc(menuCategoriesTable.sortOrder));
     const items = await db.select().from(menuItemsTable).orderBy(asc(menuItemsTable.id));
 
-    const result = categories.map((cat) => ({
+    // Build nested structure: top-level categories with children
+    const topLevel = categories.filter(c => !c.parentId);
+    const result = topLevel.map((cat) => ({
       ...cat,
       items: items.filter((item) => item.categoryId === cat.id),
+      children: categories
+        .filter(child => child.parentId === cat.id)
+        .map(child => ({
+          ...child,
+          items: items.filter(item => item.categoryId === child.id),
+        })),
     }));
     res.json(result);
   } catch (err) {
@@ -21,11 +29,36 @@ router.get("/menu/categories", async (_req, res) => {
   }
 });
 
-router.post("/menu/categories", requireAuth, async (req, res) => {
+router.post("/menu/categories", requireAuth, requireRole("manager"), async (req, res) => {
   try {
-    const { name, description, sortOrder } = req.body as { name: string; description?: string; sortOrder?: number };
-    const [cat] = await db.insert(menuCategoriesTable).values({ name, description, sortOrder: sortOrder ?? 0 }).returning();
-    res.status(201).json({ ...cat, items: [] });
+    const { name, description, sortOrder, parentId } = req.body as { name: string; description?: string; sortOrder?: number; parentId?: number };
+    const [cat] = await db.insert(menuCategoriesTable).values({ name, description, sortOrder: sortOrder ?? 0, parentId: parentId ?? null }).returning();
+    res.status(201).json({ ...cat, items: [], children: [] });
+  } catch (err) {
+    res.status(500).json({ error: "server_error", message: String(err) });
+  }
+});
+
+router.delete("/menu/categories/:catId", requireAuth, requireRole("manager"), async (req, res) => {
+  try {
+    const catId = parseInt(req.params.catId as string);
+
+    // Check for child categories
+    const children = await db.select({ id: menuCategoriesTable.id }).from(menuCategoriesTable).where(eq(menuCategoriesTable.parentId, catId));
+    if (children.length > 0) {
+      res.status(400).json({ error: "not_empty", message: "Дэд ангилалтай ангилалыг устгах боломжгүй. Эхлээд дэд ангилалуудыг устгана уу." });
+      return;
+    }
+
+    // Check for menu items
+    const items = await db.select({ id: menuItemsTable.id }).from(menuItemsTable).where(eq(menuItemsTable.categoryId, catId));
+    if (items.length > 0) {
+      res.status(400).json({ error: "not_empty", message: "Хоол бүтээгдэхүүнтэй ангилалыг устгах боломжгүй. Эхлээд хоолуудыг устгана уу." });
+      return;
+    }
+
+    await db.delete(menuCategoriesTable).where(eq(menuCategoriesTable.id, catId));
+    res.status(204).send();
   } catch (err) {
     res.status(500).json({ error: "server_error", message: String(err) });
   }
@@ -40,7 +73,7 @@ router.get("/menu/items", async (_req, res) => {
   }
 });
 
-router.post("/menu/items", requireAuth, async (req, res) => {
+router.post("/menu/items", requireAuth, requireRole("manager"), async (req, res) => {
   try {
     const { categoryId, name, description, price, imageUrl, modelUrl, available, preparationTime } = req.body as {
       categoryId: number;
@@ -52,6 +85,10 @@ router.post("/menu/items", requireAuth, async (req, res) => {
       available?: boolean;
       preparationTime?: number;
     };
+    if (price < 0) {
+      res.status(400).json({ error: "validation_error", message: "Үнэ 0-ээс бага байж болохгүй" });
+      return;
+    }
     const [item] = await db
       .insert(menuItemsTable)
       .values({ categoryId, name, description, price: String(price), imageUrl, modelUrl, available: available ?? true, preparationTime })
@@ -62,9 +99,9 @@ router.post("/menu/items", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/menu/items/:itemId", requireAuth, async (req, res) => {
+router.patch("/menu/items/:itemId", requireAuth, requireRole("manager"), async (req, res) => {
   try {
-    const itemId = parseInt(req.params.itemId!);
+    const itemId = parseInt(req.params.itemId as string);
     const updates = req.body as {
       name?: string;
       description?: string;
@@ -78,7 +115,13 @@ router.patch("/menu/items/:itemId", requireAuth, async (req, res) => {
     const updateData: Record<string, unknown> = {};
     if (updates.name !== undefined) updateData.name = updates.name;
     if (updates.description !== undefined) updateData.description = updates.description;
-    if (updates.price !== undefined) updateData.price = String(updates.price);
+    if (updates.price !== undefined) {
+      if (updates.price < 0) {
+        res.status(400).json({ error: "validation_error", message: "Үнэ 0-ээс бага байж болохгүй" });
+        return;
+      }
+      updateData.price = String(updates.price);
+    }
     if (updates.imageUrl !== undefined) updateData.imageUrl = updates.imageUrl;
     if (updates.modelUrl !== undefined) updateData.modelUrl = updates.modelUrl;
     if (updates.available !== undefined) updateData.available = updates.available;
@@ -95,9 +138,9 @@ router.patch("/menu/items/:itemId", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/menu/items/:itemId", requireAuth, async (req, res) => {
+router.delete("/menu/items/:itemId", requireAuth, requireRole("manager"), async (req, res) => {
   try {
-    const itemId = parseInt(req.params.itemId!);
+    const itemId = parseInt(req.params.itemId as string);
     await db.delete(menuItemsTable).where(eq(menuItemsTable.id, itemId));
     res.status(204).send();
   } catch (err) {

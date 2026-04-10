@@ -1,6 +1,7 @@
 % ================================================================
-%  ШУТИС – Бакалаврын Дипломын Ажил – XeLaTeX / tectonic
-%  Тогтохын Оюунбаатар  B220930001
+%  Өмнөговь аймаг дахь Технологийн Дээд Сургууль
+%  Бакалаврын Дипломын Ажил – XeLaTeX / tectonic
+%  Эрдэнэтөгсийн Очбадрах
 % ================================================================
 \documentclass[12pt,a4paper]{report}
 
@@ -10,8 +11,8 @@
 \setmonofont[Scale=0.85]{DejaVu Sans Mono}
 
 \usepackage{polyglossia}
-\setmainlanguage{mongolian}
-\setotherlanguage{english}
+\setdefaultlanguage{english}
+\setotherlanguage{mongolian}
 
 \usepackage{geometry}
 \geometry{a4paper, left=3cm, right=2cm, top=2.5cm, bottom=2.5cm}
@@ -19,13 +20,13 @@
 \usepackage{setspace}
 \onehalfspacing
 
-\\usepackage{amsmath,amssymb}
+\usepackage{amsmath,amssymb}
 
 \usepackage{booktabs}
 \usepackage{multirow}
 \usepackage{array}
 \usepackage{tabularx}
-\\usepackage{longtable}
+\usepackage{longtable}
 \usepackage{colortbl}
 \newcolumntype{Y}{>{\centering\arraybackslash}X}
 \newcolumntype{L}{>{\raggedright\arraybackslash}X}
@@ -39,8 +40,20 @@
 \definecolor{LightBlue}{RGB}{240,248,255}
 
 \usepackage{graphicx}
+\usepackage{grffile}
 \usepackage{float}
 \usepackage{subcaption}
+
+% Зураг олдохгүй үед алдаа гаргахгүй
+\let\OrigIncludegraphics\includegraphics
+\renewcommand{\includegraphics}[2][]{%
+  \IfFileExists{#2}{\OrigIncludegraphics[#1]{#2}}{%
+    \fbox{\parbox{0.5\textwidth}{\centering\vspace{2cm}%
+    \textbf{Зураг:} \texttt{#2}\\[6pt]%
+    (Файл upload хийгдээгүй байна)%
+    \vspace{2cm}}}%
+  }%
+}
 
 \usepackage{tikz}
 \usetikzlibrary{shapes,shapes.geometric,arrows,arrows.meta,positioning,fit,calc}
@@ -67,7 +80,7 @@
 \usepackage{url}
 \usepackage{tcolorbox}
 \tcbuselibrary{skins,breakable}
-\\usepackage[hidelinks]{hyperref}
+\usepackage[hidelinks]{hyperref}
 
 \usepackage{titlesec}
 \titleformat{\chapter}[display]
@@ -81,8 +94,8 @@
 \usepackage{fancyhdr}
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\small\textit{QR Кодоор Ширээнээс Хоол Захиалах Мобайл Систем}}
-\fancyhead[R]{\small ШУТИС -- МХТ}
+\fancyhead[L]{\small\textit{Рестораны ширээ захиалга, цэс удирдлагын мобайл систем}}
+\fancyhead[R]{\small Өмнөговь ТДС}
 \fancyfoot[C]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
 \fancypagestyle{plain}{%
@@ -118,6 +131,47 @@
 \tableofcontents
 \listoffigures
 \listoftables
+\clearpage
+
+% ================================================================
+%  ТОВЧИЛСОН ҮГИЙН ТАЙЛБАР
+% ================================================================
+\chapter*{Товчилсон үгийн тайлбар}
+\addcontentsline{toc}{chapter}{Товчилсон үгийн тайлбар}
+
+\begin{longtable}{@{} p{3.5cm} p{11cm} @{}}
+\textbf{Товчлол} & \textbf{Тайлбар} \\[6pt]
+\hline\\[-6pt]
+API & Application Programming Interface -- Програм хангамжийн хөгжүүлэлтийн интерфейс \\[4pt]
+ACID & Atomicity, Consistency, Isolation, Durability -- Өгөгдлийн сангийн гүйлгээний найдвартай байдлын 4 шинж \\[4pt]
+AR & Augmented Reality -- Нэмэгдүүлсэн бодит байдал \\[4pt]
+CORS & Cross-Origin Resource Sharing -- Хөндлөн домэйн нөөц хуваалцах \\[4pt]
+CRUD & Create, Read, Update, Delete -- Өгөгдлийн үндсэн 4 үйлдэл \\[4pt]
+CSS & Cascading Style Sheets -- Вэб хуудасны загварын хэл \\[4pt]
+ДНБ & Дотоодын Нийт Бүтээгдэхүүн \\[4pt]
+ER & Entity-Relationship -- Нэгж хоорондын хамаарлын загвар \\[4pt]
+HMR & Hot Module Replacement -- Модулийг шууд солих технологи \\[4pt]
+HTTP & HyperText Transfer Protocol -- Гипер текст дамжуулах протокол \\[4pt]
+HTTPS & HyperText Transfer Protocol Secure -- Аюулгүй HTTP протокол \\[4pt]
+I/O & Input/Output -- Оролт/Гаралт \\[4pt]
+ISO & International Organization for Standardization -- Олон Улсын Стандартчиллын Байгууллага \\[4pt]
+JWT & JSON Web Token -- JSON вэб токен, баталгаажуулалтын стандарт (RFC 7519) \\[4pt]
+ORM & Object-Relational Mapping -- Обьект-хамаарлын зурагжуулалт \\[4pt]
+POS & Point of Sale -- Борлуулалтын цэг \\[4pt]
+QR & Quick Response -- Хурдан хариу, 2 хэмжээст штрих код \\[4pt]
+RAM & Random Access Memory -- Санамсаргүй хандалтын санах ой \\[4pt]
+REST & Representational State Transfer -- Төлөвийн шилжүүлгийн архитектур \\[4pt]
+SSD & Solid State Drive -- Хатуу төлөвт хөтөч \\[4pt]
+SQL & Structured Query Language -- Бүтэцлэгдсэн асуулгын хэл \\[4pt]
+SUS & System Usability Scale -- Системийн хэрэглэхүйн үнэлгээний шкала \\[4pt]
+TLS & Transport Layer Security -- Тээврийн давхаргын аюулгүй байдал \\[4pt]
+UI & User Interface -- Хэрэглэгчийн интерфейс \\[4pt]
+URL & Uniform Resource Locator -- Нөөцийн нэгдсэн хаяг \\[4pt]
+UUID & Universally Unique Identifier -- Дэлхий нийтийн өвөрмөц тодорхойлогч \\[4pt]
+VU & Virtual User -- Виртуал хэрэглэгч (ачааллын туршилтад) \\[4pt]
+WCAG & Web Content Accessibility Guidelines -- Вэб агуулгын хүртээмжийн заавар \\[4pt]
+WS & WebSocket -- Вэб сокет, 2 талын байнгын холболтын протокол (RFC 6455) \\[4pt]
+\end{longtable}
 \clearpage
 
 \include{chapters/ch1}

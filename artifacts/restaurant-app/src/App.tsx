@@ -31,6 +31,7 @@ function AppContent() {
     <Switch>
       <Route path="/" component={() => <Redirect to="/menu" />} />
       <Route path="/menu" component={GuestMenuPage} />
+      <Route path="/demo" component={GuestMenuPage} />
       <Route path="/staff/login" component={StaffLoginPage} />
       <Route path="/staff">
         {token && user ? <StaffDashboard /> : <Redirect to="/staff/login" />}

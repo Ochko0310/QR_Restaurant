@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 
 export const menuCategoriesTable = pgTable("menu_categories", {
   id: serial("id").primaryKey(),
+  parentId: integer("parent_id"),
   name: text("name").notNull(),
   description: text("description"),
   sortOrder: integer("sort_order").notNull().default(0),

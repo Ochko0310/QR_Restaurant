@@ -17,6 +17,7 @@ interface StoreState {
   addToCart: (menuItem: MenuItem, quantity: number, notes?: string) => void;
   removeFromCart: (itemId: number) => void;
   updateQuantity: (itemId: number, delta: number) => void;
+  setItemNotes: (itemId: number, notes: string) => void;
   clearCart: () => void;
 }
 
@@ -59,6 +60,10 @@ export const useStore = create<StoreState>()(
         })
       })),
       
+      setItemNotes: (itemId, notes) => set((state) => ({
+        cart: state.cart.map(i => i.menuItem.id === itemId ? { ...i, notes } : i)
+      })),
+
       clearCart: () => set({ cart: [] })
     }),
     { name: 'restaurant-storage' }

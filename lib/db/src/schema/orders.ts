@@ -23,7 +23,11 @@ export const ordersTable = pgTable("orders", {
   status: orderStatusEnum("status").notNull().default("pending"),
   paymentMethod: paymentMethodEnum("payment_method").notNull().default("cash"),
   totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  discount: numeric("discount", { precision: 10, scale: 2 }).notNull().default("0"),
+  discountReason: text("discount_reason"),
   notes: text("notes"),
+  printedAt: timestamp("printed_at"),
+  paidAt: timestamp("paid_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

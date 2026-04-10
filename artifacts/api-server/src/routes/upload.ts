@@ -22,7 +22,7 @@ const ALLOWED_IMAGE_EXTENSIONS = new Set([
   ".avif", ".bmp", ".tiff", ".tif", ".heic", ".heif",
   ".ico", ".jfif", ".pjpeg", ".pjp",
 ]);
-const ALLOWED_MODEL_EXTENSIONS = new Set([".glb", ".gltf"]);
+const ALLOWED_MODEL_EXTENSIONS = new Set([".glb", ".gltf", ".usdz"]);
 
 const upload = multer({
   storage,

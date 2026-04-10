@@ -2,8 +2,22 @@ import { Router, type Request } from "express";
 import { db } from "@workspace/db";
 import { ordersTable, orderItemsTable, tablesTable, menuItemsTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
-import { requireAuth } from "../lib/auth";
+import { requireAuth, requireRole } from "../lib/auth";
 import type { JwtPayload } from "../lib/auth";
+
+const VALID_STATUSES = ["pending", "confirmed", "preparing", "ready", "served", "paid", "cancelled"] as const;
+type OrderStatus = (typeof VALID_STATUSES)[number];
+
+// Valid status transitions: from -> allowed to states
+const STATUS_TRANSITIONS: Record<string, OrderStatus[]> = {
+  pending: ["confirmed", "cancelled"],
+  confirmed: ["preparing", "cancelled"],
+  preparing: ["ready", "cancelled"],
+  ready: ["served", "cancelled"],
+  served: ["paid"],
+  paid: [],
+  cancelled: [],
+};
 import type { Server as SocketIOServer } from "socket.io";
 
 const router = Router();
@@ -19,6 +33,7 @@ async function getOrderWithItems(orderId: number) {
     ...order,
     tableName: table?.name ?? "",
     totalAmount: Number(order.totalAmount),
+    discount: Number(order.discount),
     paymentMethod: order.paymentMethod ?? "cash",
     items: items.map((i) => ({
       ...i,
@@ -58,6 +73,7 @@ router.get("/orders", requireAuth, async (req, res) => {
       ...order,
       tableName: tableMap.get(order.tableId)?.name ?? "",
       totalAmount: Number(order.totalAmount),
+      discount: Number(order.discount),
       paymentMethod: order.paymentMethod ?? "cash",
       items: allItems
         .filter((i) => i.orderId === order.id)
@@ -84,6 +100,14 @@ router.post("/orders", async (req, res) => {
       return;
     }
 
+    // Validate quantities
+    for (const item of items) {
+      if (!item.quantity || item.quantity <= 0 || !Number.isInteger(item.quantity)) {
+        res.status(400).json({ error: "validation_error", message: "Тоо ширхэг нь 1-ээс их бүхэл тоо байх ёстой" });
+        return;
+      }
+    }
+
     const [table] = await db.select().from(tablesTable).where(eq(tablesTable.qrToken, tableToken));
     if (!table) {
       res.status(401).json({ error: "invalid_session", message: "Invalid table session" });
@@ -100,12 +124,12 @@ router.post("/orders", async (req, res) => {
     const menuItems = await db.select().from(menuItemsTable).where(inArray(menuItemsTable.id, menuItemIds));
     const menuItemMap = new Map(menuItems.map((m) => [m.id, m]));
 
-    let total = 0;
+    let newTotal = 0;
     const orderItemsData = items.map((item) => {
       const menuItem = menuItemMap.get(item.menuItemId);
       if (!menuItem) throw new Error(`Menu item ${item.menuItemId} not found`);
       const lineTotal = Number(menuItem.price) * item.quantity;
-      total += lineTotal;
+      newTotal += lineTotal;
       return {
         menuItemId: item.menuItemId,
         menuItemName: menuItem.name,
@@ -117,33 +141,85 @@ router.post("/orders", async (req, res) => {
 
     const method = paymentMethod ?? "cash";
 
-    const [order] = await db
-      .insert(ordersTable)
-      .values({ tableId: table.id, tableToken, totalAmount: String(total), notes: notes ?? null, paymentMethod: method })
-      .returning();
+    // Check for existing active order on this table
+    const activeStatuses = ["pending", "confirmed", "preparing"] as const;
+    const existingOrders = await db
+      .select()
+      .from(ordersTable)
+      .where(
+        and(
+          eq(ordersTable.tableId, table.id),
+          inArray(ordersTable.status, [...activeStatuses]),
+        )
+      )
+      .orderBy(ordersTable.createdAt);
 
-    await db.insert(orderItemsTable).values(orderItemsData.map((i) => ({ ...i, orderId: order.id })));
+    let orderId: number;
 
-    const fullOrder = await getOrderWithItems(order.id);
+    if (existingOrders.length > 0) {
+      // Append items to the first active order
+      const existingOrder = existingOrders[0]!;
+      orderId = existingOrder.id;
+
+      // Get existing items to merge quantities for same menu items
+      const existingItems = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, orderId));
+      const existingItemMap = new Map(existingItems.map((i) => [i.menuItemId, i]));
+
+      for (const newItem of orderItemsData) {
+        const existing = existingItemMap.get(newItem.menuItemId);
+        if (existing) {
+          // Same menu item exists - increase quantity
+          await db
+            .update(orderItemsTable)
+            .set({ quantity: existing.quantity + newItem.quantity })
+            .where(eq(orderItemsTable.id, existing.id));
+        } else {
+          // New menu item - insert
+          await db.insert(orderItemsTable).values({ ...newItem, orderId });
+        }
+      }
+
+      // Recalculate total
+      const allItems = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, orderId));
+      const recalcTotal = allItems.reduce((sum, i) => sum + Number(i.unitPrice) * i.quantity, 0);
+      await db
+        .update(ordersTable)
+        .set({ totalAmount: String(recalcTotal), updatedAt: new Date() })
+        .where(eq(ordersTable.id, orderId));
+    } else {
+      // No active order - create new one
+      const [order] = await db
+        .insert(ordersTable)
+        .values({ tableId: table.id, tableToken, totalAmount: String(newTotal), notes: notes ?? null, paymentMethod: method })
+        .returning();
+      orderId = order.id;
+      await db.insert(orderItemsTable).values(orderItemsData.map((i) => ({ ...i, orderId })));
+    }
+
+    const fullOrder = await getOrderWithItems(orderId);
 
     const io: SocketIOServer = req.app.get("io");
-    io.to(`restaurant_1`).emit("order:new", fullOrder);
+    if (existingOrders.length > 0) {
+      io.to(`restaurant_1`).emit("order:updated", fullOrder);
+    } else {
+      io.to(`restaurant_1`).emit("order:new", fullOrder);
+    }
     io.to(`session_${tableToken}`).emit("order:updated", fullOrder);
 
     // Keep table occupied (staff already activated it)
     if (table.status !== "occupied") {
-      await db.update(tablesTable).set({ status: "occupied" }).where(eq(tablesTable.id, table.id));
+      await db.update(tablesTable).set({ status: "occupied", occupiedSince: new Date() }).where(eq(tablesTable.id, table.id));
     }
 
-    res.status(201).json(fullOrder);
+    res.status(existingOrders.length > 0 ? 200 : 201).json(fullOrder);
   } catch (err) {
     res.status(500).json({ error: "server_error", message: String(err) });
   }
 });
 
-router.get("/orders/:orderId", async (req, res) => {
+router.get("/orders/:orderId", requireAuth, async (req, res) => {
   try {
-    const orderId = parseInt(req.params.orderId!);
+    const orderId = parseInt(req.params.orderId as string);
     const order = await getOrderWithItems(orderId);
     if (!order) {
       res.status(404).json({ error: "not_found" });
@@ -157,12 +233,40 @@ router.get("/orders/:orderId", async (req, res) => {
 
 router.patch("/orders/:orderId/status", requireAuth, async (req, res) => {
   try {
-    const orderId = parseInt(req.params.orderId!);
+    const orderId = parseInt(req.params.orderId as string);
     const { status } = req.body as { status: string };
+
+    // Validate status value
+    if (!VALID_STATUSES.includes(status as OrderStatus)) {
+      res.status(400).json({ error: "validation_error", message: `Буруу статус: ${status}` });
+      return;
+    }
+
+    // Check current status and validate transition
+    const [currentOrder] = await db.select({ status: ordersTable.status }).from(ordersTable).where(eq(ordersTable.id, orderId));
+    if (!currentOrder) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+
+    const allowed = STATUS_TRANSITIONS[currentOrder.status];
+    if (allowed && !allowed.includes(status as OrderStatus)) {
+      res.status(400).json({
+        error: "invalid_transition",
+        message: `"${currentOrder.status}" статусаас "${status}" руу шилжих боломжгүй`,
+      });
+      return;
+    }
+
+    const updateData: Record<string, unknown> = { status: status as OrderStatus, updatedAt: new Date() };
+
+    // Track timestamps for specific transitions
+    if (status === "preparing") updateData.printedAt = new Date();
+    if (status === "paid") updateData.paidAt = new Date();
 
     const [updated] = await db
       .update(ordersTable)
-      .set({ status: status as "pending" | "confirmed" | "preparing" | "ready" | "served" | "paid" | "cancelled", updatedAt: new Date() })
+      .set(updateData)
       .where(eq(ordersTable.id, orderId))
       .returning();
 
@@ -187,9 +291,84 @@ router.patch("/orders/:orderId/status", requireAuth, async (req, res) => {
         (o) => o.id === orderId || o.status === "paid" || o.status === "cancelled"
       );
       if (allPaidOrCancelled) {
-        await db.update(tablesTable).set({ status: "available" }).where(eq(tablesTable.id, updated.tableId));
+        await db.update(tablesTable).set({ status: "available", occupiedSince: null }).where(eq(tablesTable.id, updated.tableId));
       }
     }
+
+    res.json(fullOrder);
+  } catch (err) {
+    res.status(500).json({ error: "server_error", message: String(err) });
+  }
+});
+
+// Remove an item from order (void)
+router.delete("/orders/:orderId/items/:itemId", requireAuth, requireRole("manager", "cashier"), async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.orderId as string);
+    const itemId = parseInt(req.params.itemId as string);
+
+    // Check order exists and is not paid/cancelled
+    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
+    if (!order) { res.status(404).json({ error: "not_found" }); return; }
+    if (order.status === "paid" || order.status === "cancelled") {
+      res.status(400).json({ error: "invalid_action", message: "Дууссан захиалгаас хоол хасах боломжгүй" });
+      return;
+    }
+
+    // Delete the item
+    const [deleted] = await db.delete(orderItemsTable)
+      .where(and(eq(orderItemsTable.id, itemId), eq(orderItemsTable.orderId, orderId)))
+      .returning();
+    if (!deleted) { res.status(404).json({ error: "not_found", message: "Хоол олдсонгүй" }); return; }
+
+    // Recalculate total
+    const remaining = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, orderId));
+    const newTotal = remaining.reduce((sum, i) => sum + Number(i.unitPrice) * i.quantity, 0);
+    await db.update(ordersTable).set({ totalAmount: String(newTotal), updatedAt: new Date() }).where(eq(ordersTable.id, orderId));
+
+    const fullOrder = await getOrderWithItems(orderId);
+    const io: SocketIOServer = req.app.get("io");
+    io.to(`restaurant_1`).emit("order:updated", fullOrder);
+    io.to(`session_${order.tableToken}`).emit("order:updated", fullOrder);
+
+    res.json(fullOrder);
+  } catch (err) {
+    res.status(500).json({ error: "server_error", message: String(err) });
+  }
+});
+
+// Apply discount to order
+router.patch("/orders/:orderId/discount", requireAuth, requireRole("manager"), async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.orderId as string);
+    const { discount, reason } = req.body as { discount: number; reason?: string };
+
+    if (discount < 0) {
+      res.status(400).json({ error: "validation_error", message: "Хөнгөлөлт 0-ээс бага байж болохгүй" });
+      return;
+    }
+
+    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
+    if (!order) { res.status(404).json({ error: "not_found" }); return; }
+    if (order.status === "paid" || order.status === "cancelled") {
+      res.status(400).json({ error: "invalid_action", message: "Дууссан захиалгад хөнгөлөлт хийх боломжгүй" });
+      return;
+    }
+
+    if (discount > Number(order.totalAmount)) {
+      res.status(400).json({ error: "validation_error", message: "Хөнгөлөлт нийт дүнгээс хэтэрч болохгүй" });
+      return;
+    }
+
+    await db.update(ordersTable).set({
+      discount: String(discount),
+      discountReason: reason ?? null,
+      updatedAt: new Date(),
+    }).where(eq(ordersTable.id, orderId));
+
+    const fullOrder = await getOrderWithItems(orderId);
+    const io: SocketIOServer = req.app.get("io");
+    io.to(`restaurant_1`).emit("order:updated", fullOrder);
 
     res.json(fullOrder);
   } catch (err) {
@@ -211,6 +390,7 @@ router.get("/orders/table/:tableToken", async (req, res) => {
       ...order,
       tableName: table?.name ?? "",
       totalAmount: Number(order.totalAmount),
+      discount: Number(order.discount),
       paymentMethod: order.paymentMethod ?? "cash",
       items: allItems
         .filter((i) => i.orderId === order.id)

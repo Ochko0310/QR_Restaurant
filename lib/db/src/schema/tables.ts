@@ -11,6 +11,7 @@ export const tablesTable = pgTable("tables", {
   capacity: integer("capacity").notNull().default(4),
   status: tableStatusEnum("status").notNull().default("available"),
   qrToken: text("qr_token").notNull().unique(),
+  occupiedSince: timestamp("occupied_since"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -7,6 +7,10 @@ import menuRouter from "./menu";
 import ordersRouter from "./orders";
 import reportsRouter from "./reports";
 import uploadRouter from "./upload";
+import bannersRouter from "./banners";
+import reviewsRouter from "./reviews";
+import settingsRouter from "./settings";
+import reservationsRouter from "./reservations";
 
 const router: IRouter = Router();
 
@@ -18,5 +22,9 @@ router.use(menuRouter);
 router.use(ordersRouter);
 router.use(reportsRouter);
 router.use(uploadRouter);
+router.use(bannersRouter);
+router.use(reviewsRouter);
+router.use(settingsRouter);
+router.use(reservationsRouter);
 
 export default router;
