@@ -21,6 +21,7 @@ export const menuItemsTable = pgTable("menu_items", {
   modelUrl: text("model_url"),
   available: boolean("available").notNull().default(true),
   preparationTime: integer("preparation_time").default(15),
+  inventoryItemId: integer("inventory_item_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

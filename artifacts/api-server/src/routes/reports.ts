@@ -96,7 +96,7 @@ router.get("/reports/summary", requireAuth, requireRole("manager", "cashier"), a
       }
     }
 
-    const topItems = Object.values(itemAgg).sort((a, b) => b.quantity - a.quantity).slice(0, 10);
+    const topItems = Object.values(itemAgg).sort((a, b) => b.quantity - a.quantity);
 
     // Table turnover (unique tables served)
     const uniqueTables = new Set(paidOrders.map((o) => o.tableId));

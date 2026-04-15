@@ -75,7 +75,7 @@ router.get("/menu/items", async (_req, res) => {
 
 router.post("/menu/items", requireAuth, requireRole("manager"), async (req, res) => {
   try {
-    const { categoryId, name, description, price, imageUrl, modelUrl, available, preparationTime } = req.body as {
+    const { categoryId, name, description, price, imageUrl, modelUrl, available, preparationTime, inventoryItemId } = req.body as {
       categoryId: number;
       name: string;
       description?: string;
@@ -84,6 +84,7 @@ router.post("/menu/items", requireAuth, requireRole("manager"), async (req, res)
       modelUrl?: string;
       available?: boolean;
       preparationTime?: number;
+      inventoryItemId?: number | null;
     };
     if (price < 0) {
       res.status(400).json({ error: "validation_error", message: "Үнэ 0-ээс бага байж болохгүй" });
@@ -91,7 +92,7 @@ router.post("/menu/items", requireAuth, requireRole("manager"), async (req, res)
     }
     const [item] = await db
       .insert(menuItemsTable)
-      .values({ categoryId, name, description, price: String(price), imageUrl, modelUrl, available: available ?? true, preparationTime })
+      .values({ categoryId, name, description, price: String(price), imageUrl, modelUrl, available: available ?? true, preparationTime, inventoryItemId: inventoryItemId ?? null })
       .returning();
     res.status(201).json(item);
   } catch (err) {
@@ -110,6 +111,7 @@ router.patch("/menu/items/:itemId", requireAuth, requireRole("manager"), async (
       modelUrl?: string;
       available?: boolean;
       preparationTime?: number;
+      inventoryItemId?: number | null;
     };
 
     const updateData: Record<string, unknown> = {};
@@ -126,6 +128,7 @@ router.patch("/menu/items/:itemId", requireAuth, requireRole("manager"), async (
     if (updates.modelUrl !== undefined) updateData.modelUrl = updates.modelUrl;
     if (updates.available !== undefined) updateData.available = updates.available;
     if (updates.preparationTime !== undefined) updateData.preparationTime = updates.preparationTime;
+    if (updates.inventoryItemId !== undefined) updateData.inventoryItemId = updates.inventoryItemId;
 
     const [item] = await db.update(menuItemsTable).set(updateData).where(eq(menuItemsTable.id, itemId)).returning();
     if (!item) {

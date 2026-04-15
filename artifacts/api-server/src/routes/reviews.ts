@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { reviewsTable } from "@workspace/db";
-import { desc, eq } from "drizzle-orm";
-import { requireAuth, requireRole } from "../lib/auth";
+import { desc } from "drizzle-orm";
+import { requireAuth } from "../lib/auth";
+import { createNotification } from "../lib/notifications";
+import type { Server as SocketIOServer } from "socket.io";
 
 const router = Router();
 
@@ -14,7 +16,7 @@ router.get("/reviews", async (_req, res) => {
       rating: reviewsTable.rating,
       comment: reviewsTable.comment,
       createdAt: reviewsTable.createdAt,
-    }).from(reviewsTable).orderBy(desc(reviewsTable.createdAt));
+    }).from(reviewsTable).orderBy(desc(reviewsTable.rating), desc(reviewsTable.createdAt));
     res.json(reviews);
   } catch (err) {
     res.status(500).json({ error: "server_error", message: String(err) });
@@ -24,7 +26,7 @@ router.get("/reviews", async (_req, res) => {
 // Staff: get reviews with personal info
 router.get("/reviews/all", requireAuth, async (_req, res) => {
   try {
-    const reviews = await db.select().from(reviewsTable).orderBy(desc(reviewsTable.createdAt));
+    const reviews = await db.select().from(reviewsTable).orderBy(desc(reviewsTable.rating), desc(reviewsTable.createdAt));
     res.json(reviews);
   } catch (err) {
     res.status(500).json({ error: "server_error", message: String(err) });
@@ -46,18 +48,16 @@ router.post("/reviews", async (req, res) => {
       return;
     }
     const [review] = await db.insert(reviewsTable).values({ name, phone, rating, comment }).returning();
-    res.status(201).json({ id: review.id, rating: review.rating, comment: review.comment, createdAt: review.createdAt });
-  } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
-  }
-});
 
-// Staff: delete a review
-router.delete("/reviews/:id", requireAuth, requireRole("manager"), async (req, res) => {
-  try {
-    const id = parseInt(req.params.id as string);
-    await db.delete(reviewsTable).where(eq(reviewsTable.id, id));
-    res.status(204).send();
+    const io: SocketIOServer = req.app.get("io");
+    await createNotification(io, {
+      type: "review_new",
+      title: "Шинэ сэтгэгдэл",
+      message: `${name} — ${rating}★ "${comment.slice(0, 60)}${comment.length > 60 ? "…" : ""}"`,
+      data: { reviewId: review.id, rating },
+    });
+
+    res.status(201).json({ id: review.id, rating: review.rating, comment: review.comment, createdAt: review.createdAt });
   } catch (err) {
     res.status(500).json({ error: "server_error", message: String(err) });
   }

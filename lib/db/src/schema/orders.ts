@@ -1,8 +1,9 @@
-import { pgTable, text, serial, integer, numeric, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, numeric, timestamp, pgEnum, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tablesTable } from "./tables";
 import { menuItemsTable } from "./menu";
+import { customersTable, tableSessionsTable } from "./customers";
 
 export const orderStatusEnum = pgEnum("order_status", [
   "pending",
@@ -20,6 +21,8 @@ export const ordersTable = pgTable("orders", {
   id: serial("id").primaryKey(),
   tableId: integer("table_id").notNull().references(() => tablesTable.id),
   tableToken: text("table_token").notNull(),
+  customerId: uuid("customer_id").references(() => customersTable.id),
+  sessionId: integer("session_id").references(() => tableSessionsTable.id),
   status: orderStatusEnum("status").notNull().default("pending"),
   paymentMethod: paymentMethodEnum("payment_method").notNull().default("cash"),
   totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),

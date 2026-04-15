@@ -123,7 +123,41 @@ function GuestMenuContent({ token }: { token: string }) {
   const [cartOpen, setCartOpen] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const { connected } = useGuestRealtime(token);
+  const customerId = useStore((s) => s.customerId);
+  const setCustomerId = useStore((s) => s.setCustomerId);
+  const [checkinError, setCheckinError] = useState<string | null>(null);
+  const [checkedIn, setCheckedIn] = useState(false);
   const name = settings?.restaurantName || "Ресторан";
+
+  // Ensure an anonymous customer id exists for this device
+  useEffect(() => {
+    if (customerId) return;
+    fetch("/api/customers", { method: "POST" })
+      .then((r) => r.json())
+      .then((data) => { if (data?.id) setCustomerId(data.id); })
+      .catch(() => {});
+  }, [customerId, setCustomerId]);
+
+  // Bind device to active table session once table is occupied
+  useEffect(() => {
+    if (!customerId || !session?.valid) return;
+    if ((session as any).tableStatus !== "occupied") return;
+    setCheckinError(null);
+    fetch(`/api/tables/${token}/checkin`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerId }),
+    })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data?.message || "Холболт амжилтгүй");
+        setCheckedIn(true);
+      })
+      .catch((err) => {
+        setCheckedIn(false);
+        setCheckinError(err.message || "Холболт амжилтгүй");
+      });
+  }, [customerId, token, session]);
 
   if (sessionLoading) {
     return <div className="min-h-screen bg-background flex items-center justify-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
@@ -155,6 +189,25 @@ function GuestMenuContent({ token }: { token: string }) {
     );
   }
 
+  if (checkinError) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6 text-center">
+        <div className="max-w-md space-y-6">
+          <div className="w-24 h-24 bg-destructive/10 rounded-3xl mx-auto flex items-center justify-center border border-destructive/20">
+            <AlertTriangle size={48} className="text-destructive" />
+          </div>
+          <h1 className="text-2xl font-display font-bold">Захиалга хийх боломжгүй</h1>
+          <p className="text-muted-foreground text-lg">{checkinError}</p>
+          <p className="text-sm text-muted-foreground/60">Энэ ширээний QR кодыг өөр зочин аль хэдийн ашиглаж байна. Зөвхөн ширээний дэргэд буй зочин захиалга өгөх боломжтой.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!checkedIn || !customerId) {
+    return <div className="min-h-screen bg-background flex items-center justify-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <GuestHeader name={name} tableName={session.tableName} view={view} setView={setView} connected={connected} settings={settings} hasOrders />
@@ -180,7 +233,7 @@ function GuestMenuContent({ token }: { token: string }) {
 
       {view === 'menu' && <CartFloatButton onClick={() => setCartOpen(true)} />}
       <AnimatePresence>
-        {cartOpen && <CartDrawer token={token} onClose={() => setCartOpen(false)} onOrderSuccess={() => { setCartOpen(false); setView('orders'); }} />}
+        {cartOpen && <CartDrawer token={token} customerId={customerId} onClose={() => setCartOpen(false)} onOrderSuccess={() => { setCartOpen(false); setView('orders'); }} />}
       </AnimatePresence>
 
       <GuestFooter settings={settings} onMapClick={() => setShowMap(true)} />
@@ -483,14 +536,15 @@ function ARViewerModal({ modelUrl, itemName, onClose }: { modelUrl: string; item
             ar
             ar-modes="webxr scene-viewer quick-look"
             ar-scale="fixed"
+            ar-placement="floor"
             camera-controls
             touch-action="pan-y"
             auto-rotate
             shadow-intensity="1"
-            scale="0.5 0.5 0.5"
-            min-camera-orbit="auto auto 0.1m"
-            max-camera-orbit="auto auto 2m"
-            camera-orbit="0deg 75deg 1m"
+            scale="0.0036 0.0036 0.0036"
+            min-camera-orbit="auto auto 0.005m"
+            max-camera-orbit="auto auto 0.3m"
+            camera-orbit="0deg 75deg 0.02m"
             style={{ width: "100%", height: "100%", minHeight: "300px" }}
           >
             <button slot="ar-button" className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-2xl font-bold shadow-xl shadow-primary/30 flex items-center gap-2 text-sm">
@@ -533,7 +587,7 @@ function CartFloatButton({ onClick }: { onClick: () => void }) {
 
 /* ─── Cart Drawer (with item notes) ─── */
 
-function CartDrawer({ token, onClose, onOrderSuccess }: { token: string; onClose: () => void; onOrderSuccess: () => void }) {
+function CartDrawer({ token, customerId, onClose, onOrderSuccess }: { token: string; customerId: string | null; onClose: () => void; onOrderSuccess: () => void }) {
   const { cart, updateQuantity, removeFromCart, clearCart, setItemNotes } = useStore();
   const createOrder = useCreateOrder();
   const { toast } = useToast();
@@ -544,9 +598,14 @@ function CartDrawer({ token, onClose, onOrderSuccess }: { token: string; onClose
   const total = cart.reduce((acc, item) => acc + (Number(item.menuItem.price) * item.quantity), 0);
 
   const handlePlaceOrder = () => {
+    if (!customerId) {
+      toast({ title: "Алдаа", description: "Зочны бүртгэл олдсонгүй. Хуудсаа дахин сэргээнэ үү.", variant: "destructive" });
+      return;
+    }
     createOrder.mutate({
       data: {
         tableToken: token,
+        customerId,
         items: cart.map(i => ({ menuItemId: i.menuItem.id, quantity: i.quantity, notes: i.notes })),
         paymentMethod,
         notes: orderNotes || undefined,
@@ -710,42 +769,78 @@ function OrdersSection({ token }: { token: string }) {
 }
 
 function EstimatedTime({ order }: { order: any }) {
-  // Estimate based on max preparationTime of items (default 15 min)
-  const maxPrepTime = Math.max(...(order.items ?? []).map((i: any) => i.preparationTime ?? 15), 15);
+  const prepTimes = (order.items ?? [])
+    .map((i: any) => Number(i.preparationTime))
+    .filter((v: number) => Number.isFinite(v) && v > 0);
+  // Default ~15 min, cap at 60 to avoid nonsense numbers
+  const maxPrepTime = Math.min(60, prepTimes.length ? Math.max(...prepTimes) : 15);
   const createdAt = new Date(order.createdAt).getTime();
   const readyAt = createdAt + maxPrepTime * 60000;
-  const remaining = Math.max(0, Math.ceil((readyAt - Date.now()) / 60000));
+  const remaining = Math.ceil((readyAt - Date.now()) / 60000);
 
-  if (remaining <= 0) return (
-    <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
-      <Clock size={10} /> Удахгүй бэлэн болно
-    </p>
-  );
+  if (remaining <= 0) {
+    return (
+      <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
+        <Clock size={10} /> Удахгүй бэлэн болно
+      </p>
+    );
+  }
 
   return (
     <p className="text-xs text-orange-400 mt-1 flex items-center gap-1">
-      <Clock size={10} /> ~{remaining} мин хүлээнэ
+      <Clock size={10} /> Ойролцоогоор {remaining} мин дараа бэлэн
     </p>
   );
 }
 
 function OrderStatusTracker({ status }: { status: string }) {
-  const steps = ['pending', 'confirmed', 'preparing', 'ready', 'served'];
-  const currentIndex = steps.indexOf(status);
-  const labels: Record<string, string> = { pending: 'Хүлээгдэж буй', confirmed: 'Баталгаажсан', preparing: 'Бэлтгэж буй', ready: 'Бэлэн', served: 'Зөөгдсөн', paid: 'Төлөгдсөн', cancelled: 'Цуцлагдсан' };
+  // 4 main stages the guest cares about
+  const steps: Array<{ key: string; label: string }> = [
+    { key: 'pending', label: 'Хүлээгдэж буй' },
+    { key: 'preparing', label: 'Бэлтгэж буй' },
+    { key: 'ready', label: 'Бэлэн' },
+    { key: 'served', label: 'Зөөгдсөн' },
+  ];
+  const statusToStep: Record<string, number> = {
+    pending: 0,
+    confirmed: 0,
+    preparing: 1,
+    ready: 2,
+    served: 3,
+  };
+  const labels: Record<string, string> = {
+    pending: 'Хүлээгдэж буй',
+    confirmed: 'Хүлээгдэж буй',
+    preparing: 'Бэлтгэж буй',
+    ready: 'Бэлэн',
+    served: 'Зөөгдсөн',
+    paid: 'Төлөгдсөн',
+    cancelled: 'Цуцлагдсан',
+  };
 
   if (status === 'paid' || status === 'cancelled') {
     return <div className={`px-4 py-1.5 rounded-full text-xs font-bold ${status === 'paid' ? 'bg-zinc-800 text-zinc-400' : 'bg-red-500/20 text-red-500'}`}>{labels[status]}</div>;
   }
 
+  const currentIndex = statusToStep[status] ?? 0;
+
   return (
     <div className="flex flex-col items-end">
-      <div className="px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-bold mb-2">{labels[status] || status}</div>
-      <div className="flex gap-1">
+      <div className="px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-bold mb-2">
+        {labels[status] || status}
+      </div>
+      <div className="flex gap-1 mb-1">
         {steps.map((step, idx) => (
-          <div key={step} className={`w-3 h-1.5 rounded-full ${idx <= currentIndex ? 'bg-primary' : 'bg-white/10'}`} title={step} />
+          <div
+            key={step.key}
+            className={`h-1.5 rounded-full transition-all ${idx === currentIndex ? 'w-5 bg-primary' : idx < currentIndex ? 'w-3 bg-primary/60' : 'w-3 bg-white/10'}`}
+            title={step.label}
+          />
         ))}
       </div>
+      <span className="text-[10px] text-muted-foreground font-medium">
+        Алхам {currentIndex + 1} / {steps.length}
+      </span>
     </div>
   );
 }

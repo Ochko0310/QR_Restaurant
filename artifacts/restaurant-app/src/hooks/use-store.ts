@@ -11,9 +11,11 @@ export interface CartItem {
 interface StoreState {
   token: string | null;
   user: User | null;
+  customerId: string | null;
   cart: CartItem[];
   setAuth: (token: string, user: User) => void;
   logout: () => void;
+  setCustomerId: (id: string) => void;
   addToCart: (menuItem: MenuItem, quantity: number, notes?: string) => void;
   removeFromCart: (itemId: number) => void;
   updateQuantity: (itemId: number, delta: number) => void;
@@ -26,11 +28,14 @@ export const useStore = create<StoreState>()(
     (set) => ({
       token: null,
       user: null,
+      customerId: null,
       cart: [],
-      
+
       setAuth: (token, user) => set({ token, user }),
-      
+
       logout: () => set({ token: null, user: null }),
+
+      setCustomerId: (id) => set({ customerId: id }),
       
       addToCart: (menuItem, quantity, notes) => set((state) => {
         const existing = state.cart.find(i => i.menuItem.id === menuItem.id);

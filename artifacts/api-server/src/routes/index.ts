@@ -11,6 +11,9 @@ import bannersRouter from "./banners";
 import reviewsRouter from "./reviews";
 import settingsRouter from "./settings";
 import reservationsRouter from "./reservations";
+import customersRouter from "./customers";
+import inventoryRouter from "./inventory";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -26,5 +29,8 @@ router.use(bannersRouter);
 router.use(reviewsRouter);
 router.use(settingsRouter);
 router.use(reservationsRouter);
+router.use(customersRouter);
+router.use(inventoryRouter);
+router.use(notificationsRouter);
 
 export default router;

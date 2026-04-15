@@ -374,167 +374,83 @@ CREATE TABLE order_items (
 
 \section{Хэрэглэгчийн интерфейсийн загвар}
 
-\subsection{Нэвтрэх дэлгэц}
-
-Ажилтнууд (кассир, менежер) системд нэвтрэхийн тулд хэрэглэгчийн нэр, нууц үгээ
-оруулан ``Sign In'' товчийг дарна. JWT токен амжилттай үүссэний дараа ажилтны
-удирдлагын самбар руу шилждэг (Зураг~\ref{fig:login}).
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.6\textwidth]{Figures/login-page.png}
-\caption{Ажилтны нэвтрэх дэлгэц}
-\label{fig:login}
-\end{figure}
-
 \subsection{Зочны цэсийн интерфейс}
 
-Зочин ширээн дээрх QR кодыг утсаараа уншуулахад рестораны дижитал цэс нээгдэнэ.
-Цэсийн дэлгэц нь рестораны баннер зураг, ангиллын таб (Монгол хоол, гадаад хоол,
-уух зүйлс), хоолны карт (зураг, нэр, тайлбар, үнэ, AR 3D харах боломж) зэргийг
-агуулна (Зураг~\ref{fig:guest-menu}).
+Зочны цэсийн дэлгэц нь дараах бүрэлдэхүүн хэсгүүдтэй:
+
+\begin{itemize}
+  \item \textbf{Толгой хэсэг}: Рестораны нэр, ширээний дугаар, хэлний сонголт;
+  \item \textbf{Ангиллын таб}: Хоолны ангиллуудыг хэвтээ scroll-оор харуулна;
+  \item \textbf{Хоолны карт}: Зураг, нэр, тайлбар, үнэ бүхий карт бүрэлдэхүүн;
+  \item \textbf{Сагс}: Сонгосон хоолнууд, тоо ширхэг, нийт дүн;
+  \item \textbf{Захиалгын товч}: Захиалгыг серверт илгээх үйлдэл.
+\end{itemize}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.35\textwidth]{Figures/guest-menu.png}
-\caption{Зочны цэсийн дэлгэц -- ангиллаар бүлэглэгдсэн хоолны жагсаалт, AR 3D харах боломж (мобайл харагдац)}
+\includegraphics[width=0.45\textwidth]{Figures/guest-menu.png}
+\caption{Зочны цэсийн дэлгэцийн дүрс (мобайл харагдац)}
 \label{fig:guest-menu}
 \end{figure}
 
-Зочин хоол сонгон сагсанд нэмсний дараа захиалгын дэлгэц нээгдэнэ. Энд хоол бүрийн
-тоо ширхэг, нэмэлт тайлбар (жишээ нь ``хальсгүй''), нийт төлбөр, төлбөрийн хэлбэр
-(кассаар эсвэл банкаар) сонголт харагдана (Зураг~\ref{fig:guest-cart}).
-
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.35\textwidth]{Figures/guest-cart.png}
-\caption{Зочны захиалгын сагс -- хоол сонгох, тоо ширхэг, төлбөрийн хэлбэр сонгох (мобайл харагдац)}
+\includegraphics[width=0.45\textwidth]{Figures/guest-cart.png}
+\caption{Зочны сагсны дэлгэц -- хоол сонгон захиалга өгөх}
 \label{fig:guest-cart}
 \end{figure}
 
-Захиалга өгсний дараа зочин захиалгын статусыг бодит цаг хугацаанд хянах боломжтой.
-Дэлгэцэнд захиалгын дугаар, статус (``Хүлээгдэж буй''), хоолны жагсаалт, нийт дүн
-харагдана. Мөн рестораны холбоо барих мэдээлэл (утас, хаяг, ажлын цаг, сошиал
-медиа холбоос) хөл хэсэгт байрлана (Зураг~\ref{fig:guest-status}).
-
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.35\textwidth]{Figures/guest-order-status.png}
-\caption{Зочны захиалгын статус хянах дэлгэц -- бодит цагийн мэдэгдэл, рестораны холбоо барих мэдээлэл (мобайл харагдац)}
+\includegraphics[width=0.45\textwidth]{Figures/guest-order-status.png}
+\caption{Зочны захиалгын статус хянах дэлгэц}
 \label{fig:guest-status}
 \end{figure}
 
 \subsection{Ажилтны удирдлагын самбар}
 
-Менежер/кассир нэвтэрсний дараа захиалгын самбар харагдана. Дэлгэцийн дээд хэсэгт
-захиалгын урсгал (Шинэ $\to$ Гал тогоонд $\to$ Хоол болсноор төлбөр авна) харагдах
-бөгөөд идэвхтэй захиалгуудыг карт хэлбэрээр харуулна. Захиалга тус бүрд ширээний
-дугаар, хоолны жагсаалт, нийт дүн, ``Баримт хэвлэх -- Гал тогоонд'' товч байрлана
-(Зураг~\ref{fig:staff-orders}).
+Ажилтны дэлгэц нь дараах модулиудтай:
+
+\begin{itemize}
+  \item \textbf{Захиалгын самбар}: Бодит цагийн захиалгын жагсаалт, статус шилжүүлгээ;
+  \item \textbf{Ширээний удирдлага}: Ширээ нэмэх, засах, QR код хэвлэх;
+  \item \textbf{Цэс удирдлага}: Ангилал, хоолны CRUD (Create, Read, Update, Delete);
+  \item \textbf{Тайлан}: Өдрийн орлого, эрэлттэй хоол, ширээний статистик.
+\end{itemize}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{Figures/staff-orders.png}
-\caption{Ажилтны захиалгын удирдлагын самбар -- бодит цагийн захиалга хүлээн авах, статус шилжүүлэх}
-\label{fig:staff-orders}
+\includegraphics[width=0.95\textwidth]{Figures/staff-dashboard.png}
+\caption{Ажилтны захиалгын удирдлагын самбар}
+\label{fig:staff-dashboard}
 \end{figure}
-
-\subsection{Цэс удирдлага}
-
-Менежер цэсний удирдлагын хэсгээс хоолны ангилал (Монгол хоол, гадаад хоол, уух
-зүйлс, шөлтэй хоол) нэмэх, засах, устгах боломжтой. Хоол бүрийн нэр, үнэ, тайлбар,
-зураг, ``Нээлттэй/Хаалттай'' статус удирдана (Зураг~\ref{fig:staff-menu}).
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{Figures/staff-menu-manage.png}
-\caption{Цэс удирдлагын дэлгэц -- ангилал, хоол нэмэх, засах, нээлттэй/хаалттай статус}
+\caption{Цэс удирдлагын дэлгэц -- хоол нэмэх, засах}
 \label{fig:staff-menu}
 \end{figure}
-
-\subsection{Ширээний удирдлага}
-
-Ширээний удирдлагын хэсгээс ширээ нэмэх, засах, устгах, QR код үүсгэх, хэвлэх
-боломжтой. Ширээ бүрийн статус (Эзлэгдсэн/Чөлөөтэй), багтаамж, суусан хугацаа
-харагдана. QR код дарахад тухайн ширээний URL бүхий QR зураг нээгдэнэ
-(Зураг~\ref{fig:staff-tables}).
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{Figures/staff-tables.png}
-\caption{Ширээний удирдлага -- ширээний статус, QR код үүсгэх, хэвлэх}
+\caption{Ширээний удирдлага -- ширээ нэмэх, QR код хэвлэх}
 \label{fig:staff-tables}
 \end{figure}
 
-\subsection{Ширээ захиалга}
-
-Менежер/кассир зочны нэр, утасны дугаар, хүний тоо, огноо, цаг, тэмдэглэл зэрэг
-мэдээллийг оруулан ширээ захиалгыг бүртгэнэ (Зураг~\ref{fig:staff-reservations}).
-
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{Figures/staff-reservations.png}
-\caption{Ширээ захиалгын бүртгэлийн дэлгэц}
-\label{fig:staff-reservations}
-\end{figure}
-
-\subsection{Борлуулалтын тайлан}
-
-Тайлангийн хэсэгт нийт захиалга, нийт орлого, хөнгөлөлт, цэвэр орлого, дундаж дүн,
-дундаж үйлчилгээ хугацаа, ширээний эргэлт, цуцалсан захиалга зэрэг статистик
-мэдээлэл харагдана (Зураг~\ref{fig:staff-report-stats}). Мөн ачаалалтай цагууд
-(bar chart), захиалгын статусаар (pie chart), хамгийн их захиалагдсан хоол (Top 10
-horizontal bar chart) зэрэг графикуудыг харуулна (Зураг~\ref{fig:staff-report-charts}).
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.95\textwidth]{Figures/staff-report-stats.png}
-\caption{Борлуулалтын тайлан -- нийт орлого, захиалга, дундаж дүн, ширээний эргэлт}
-\label{fig:staff-report-stats}
+\includegraphics[width=0.95\textwidth]{Figures/staff-reports.png}
+\caption{Тайлангийн дэлгэц -- өдрийн орлого, эрэлттэй хоол}
+\label{fig:staff-reports}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{Figures/staff-report-charts.png}
-\caption{Тайлангийн графикууд -- ачаалалтай цагууд, захиалгын статус, шилдэг хоол (Top 10)}
-\label{fig:staff-report-charts}
-\end{figure}
-
-\subsection{Зарын удирдлага}
-
-Менежер рестораны зар (баннер) зургуудыг нэмэх, устгах, идэвхтэй/идэвхгүй болгох
-боломжтой. Баннер зургууд зочны цэсийн дээд хэсэгт carousel хэлбэрээр харагдана
-(Зураг~\ref{fig:staff-banners}).
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.95\textwidth]{Figures/staff-banners.png}
-\caption{Зарын удирдлага -- баннер зураг нэмэх, идэвхтэй/идэвхгүй удирдах}
-\label{fig:staff-banners}
-\end{figure}
-
-\subsection{Сэтгэгдлийн удирдлага}
-
-Зочдын үлдээсэн сэтгэгдэл, үнэлгээ (1--5 одтой) менежерийн дэлгэцэнд харагдана.
-Менежер хэрэггүй сэтгэгдлийг устгах боломжтой (Зураг~\ref{fig:staff-reviews}).
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.95\textwidth]{Figures/staff-reviews.png}
-\caption{Сэтгэгдлийн удирдлага -- зочдын үнэлгээ, сэтгэгдэл харах, устгах}
-\label{fig:staff-reviews}
-\end{figure}
-
-\subsection{Тохиргоо}
-
-Менежер рестораны үндсэн тохиргоог (нэр, утас, хаяг, Instagram, Facebook, Google Maps
-холбоос, ажлын цаг) шинэчлэх боломжтой (Зураг~\ref{fig:staff-settings}).
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.95\textwidth]{Figures/staff-settings.png}
-\caption{Рестораны тохиргоо -- нэр, холбоо барих, сошиал медиа, ажлын цаг}
-\label{fig:staff-settings}
+\includegraphics[width=0.95\textwidth]{Figures/login-page.png}
+\caption{Ажилтны нэвтрэх дэлгэц}
+\label{fig:login}
 \end{figure}
 
 \section{API жагсаалт}

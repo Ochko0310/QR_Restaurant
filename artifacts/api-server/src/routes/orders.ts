@@ -1,19 +1,20 @@
 import { Router, type Request } from "express";
 import { db } from "@workspace/db";
-import { ordersTable, orderItemsTable, tablesTable, menuItemsTable } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { ordersTable, orderItemsTable, tablesTable, menuItemsTable, tableSessionsTable, customersTable, inventoryItemsTable } from "@workspace/db";
+import { eq, and, inArray, isNull } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth";
 import type { JwtPayload } from "../lib/auth";
+import { createNotification } from "../lib/notifications";
 
 const VALID_STATUSES = ["pending", "confirmed", "preparing", "ready", "served", "paid", "cancelled"] as const;
 type OrderStatus = (typeof VALID_STATUSES)[number];
 
 // Valid status transitions: from -> allowed to states
 const STATUS_TRANSITIONS: Record<string, OrderStatus[]> = {
-  pending: ["confirmed", "cancelled"],
+  pending: ["confirmed", "preparing", "cancelled"],
   confirmed: ["preparing", "cancelled"],
   preparing: ["ready", "cancelled"],
-  ready: ["served", "cancelled"],
+  ready: ["served", "paid", "cancelled"],
   served: ["paid"],
   paid: [],
   cancelled: [],
@@ -88,8 +89,9 @@ router.get("/orders", requireAuth, async (req, res) => {
 
 router.post("/orders", async (req, res) => {
   try {
-    const { tableToken, items, notes, paymentMethod } = req.body as {
+    const { tableToken, customerId, items, notes, paymentMethod } = req.body as {
       tableToken: string;
+      customerId?: string;
       items: Array<{ menuItemId: number; quantity: number; notes?: string }>;
       notes?: string;
       paymentMethod?: "cash" | "bank";
@@ -97,6 +99,11 @@ router.post("/orders", async (req, res) => {
 
     if (!tableToken || !items?.length) {
       res.status(400).json({ error: "bad_request", message: "tableToken and items required" });
+      return;
+    }
+
+    if (!customerId) {
+      res.status(400).json({ error: "bad_request", message: "customerId required" });
       return;
     }
 
@@ -108,6 +115,12 @@ router.post("/orders", async (req, res) => {
       }
     }
 
+    const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, customerId));
+    if (!customer) {
+      res.status(401).json({ error: "invalid_customer", message: "Зочны бүртгэл олдсонгүй" });
+      return;
+    }
+
     const [table] = await db.select().from(tablesTable).where(eq(tablesTable.qrToken, tableToken));
     if (!table) {
       res.status(401).json({ error: "invalid_session", message: "Invalid table session" });
@@ -117,6 +130,20 @@ router.post("/orders", async (req, res) => {
     // QR session security: only allow ordering when table is occupied (activated by staff)
     if (table.status === "available") {
       res.status(403).json({ error: "table_not_active", message: "Ширээ идэвхжээгүй байна. Үйлчлэгчид хандана уу." });
+      return;
+    }
+
+    // An open session must exist (staff activated the table).
+    // Multiple guests sharing the same table may all order on the same
+    // active session — we do not require the session's creator customerId
+    // to match this order's customerId.
+    const [openSession] = await db
+      .select()
+      .from(tableSessionsTable)
+      .where(and(eq(tableSessionsTable.tableId, table.id), isNull(tableSessionsTable.endedAt)));
+
+    if (!openSession) {
+      res.status(403).json({ error: "no_session", message: "Идэвхтэй session байхгүй байна" });
       return;
     }
 
@@ -141,7 +168,8 @@ router.post("/orders", async (req, res) => {
 
     const method = paymentMethod ?? "cash";
 
-    // Check for existing active order on this table
+    // Only merge with the same guest's most recent active order within 10
+    // minutes so each guest at a shared table keeps their own ticket.
     const activeStatuses = ["pending", "confirmed", "preparing"] as const;
     const existingOrders = await db
       .select()
@@ -149,16 +177,23 @@ router.post("/orders", async (req, res) => {
       .where(
         and(
           eq(ordersTable.tableId, table.id),
+          eq(ordersTable.customerId, customerId),
           inArray(ordersTable.status, [...activeStatuses]),
         )
       )
       .orderBy(ordersTable.createdAt);
 
+    const MERGE_WINDOW_MS = 10 * 60 * 1000;
+    const mostRecent = existingOrders[existingOrders.length - 1];
+    const withinMergeWindow =
+      !!mostRecent &&
+      Date.now() - new Date(mostRecent.createdAt).getTime() < MERGE_WINDOW_MS;
+
     let orderId: number;
 
-    if (existingOrders.length > 0) {
-      // Append items to the first active order
-      const existingOrder = existingOrders[0]!;
+    if (withinMergeWindow && mostRecent) {
+      // Append items to the most recent active order
+      const existingOrder = mostRecent;
       orderId = existingOrder.id;
 
       // Get existing items to merge quantities for same menu items
@@ -190,19 +225,68 @@ router.post("/orders", async (req, res) => {
       // No active order - create new one
       const [order] = await db
         .insert(ordersTable)
-        .values({ tableId: table.id, tableToken, totalAmount: String(newTotal), notes: notes ?? null, paymentMethod: method })
+        .values({
+          tableId: table.id,
+          tableToken,
+          customerId,
+          sessionId: openSession.id,
+          totalAmount: String(newTotal),
+          notes: notes ?? null,
+          paymentMethod: method,
+        })
         .returning();
       orderId = order.id;
       await db.insert(orderItemsTable).values(orderItemsData.map((i) => ({ ...i, orderId })));
     }
 
+    // Auto-decrement inventory for menu items linked to inventory_items.
+    // Aggregate quantities per inventory item first so one order with the
+    // same item in multiple lines only produces one delta.
+    const invDeltas = new Map<number, number>();
+    for (const item of items) {
+      const menuItem = menuItemMap.get(item.menuItemId);
+      if (!menuItem?.inventoryItemId) continue;
+      invDeltas.set(menuItem.inventoryItemId, (invDeltas.get(menuItem.inventoryItemId) ?? 0) + item.quantity);
+    }
+
+    for (const [invId, delta] of invDeltas.entries()) {
+      const [prev] = await db.select().from(inventoryItemsTable).where(eq(inventoryItemsTable.id, invId));
+      if (!prev) continue;
+      const newQty = Math.max(prev.quantity - delta, 0);
+      await db
+        .update(inventoryItemsTable)
+        .set({ quantity: newQty, updatedAt: new Date() })
+        .where(eq(inventoryItemsTable.id, invId));
+
+      // Fire a notification only when the stock crosses below threshold,
+      // or drops to zero — so we don't spam one notification per order
+      // while the stock is already low.
+      const crossedThreshold = prev.quantity > prev.threshold && newQty <= prev.threshold;
+      const becameEmpty = prev.quantity > 0 && newQty === 0;
+      if (crossedThreshold || becameEmpty) {
+        const io: SocketIOServer = req.app.get("io");
+        await createNotification(io, {
+          type: "inventory_low",
+          title: newQty === 0 ? "Нөөц дууслаа" : "Нөөц дуусах гэж байна",
+          message: `"${prev.name}" — ${newQty} ш үлдсэн (доод хэмжээ: ${prev.threshold})`,
+          data: { inventoryItemId: prev.id },
+        });
+      }
+    }
+
     const fullOrder = await getOrderWithItems(orderId);
 
     const io: SocketIOServer = req.app.get("io");
-    if (existingOrders.length > 0) {
+    if (withinMergeWindow) {
       io.to(`restaurant_1`).emit("order:updated", fullOrder);
     } else {
       io.to(`restaurant_1`).emit("order:new", fullOrder);
+      await createNotification(io, {
+        type: "order_new",
+        title: "Шинэ захиалга",
+        message: `Ширээ ${fullOrder?.tableName ?? "#" + table.id} — ₮${Number(fullOrder?.totalAmount ?? 0).toLocaleString()}`,
+        data: { orderId, tableId: table.id },
+      });
     }
     io.to(`session_${tableToken}`).emit("order:updated", fullOrder);
 
@@ -211,7 +295,7 @@ router.post("/orders", async (req, res) => {
       await db.update(tablesTable).set({ status: "occupied", occupiedSince: new Date() }).where(eq(tablesTable.id, table.id));
     }
 
-    res.status(existingOrders.length > 0 ? 200 : 201).json(fullOrder);
+    res.status(withinMergeWindow ? 200 : 201).json(fullOrder);
   } catch (err) {
     res.status(500).json({ error: "server_error", message: String(err) });
   }
@@ -291,7 +375,15 @@ router.patch("/orders/:orderId/status", requireAuth, async (req, res) => {
         (o) => o.id === orderId || o.status === "paid" || o.status === "cancelled"
       );
       if (allPaidOrCancelled) {
-        await db.update(tablesTable).set({ status: "available", occupiedSince: null }).where(eq(tablesTable.id, updated.tableId));
+        const newToken = (await import("uuid")).v4();
+        await db
+          .update(tablesTable)
+          .set({ status: "available", occupiedSince: null, qrToken: newToken })
+          .where(eq(tablesTable.id, updated.tableId));
+        await db
+          .update(tableSessionsTable)
+          .set({ endedAt: new Date() })
+          .where(and(eq(tableSessionsTable.tableId, updated.tableId), isNull(tableSessionsTable.endedAt)));
       }
     }
 
@@ -330,45 +422,6 @@ router.delete("/orders/:orderId/items/:itemId", requireAuth, requireRole("manage
     const io: SocketIOServer = req.app.get("io");
     io.to(`restaurant_1`).emit("order:updated", fullOrder);
     io.to(`session_${order.tableToken}`).emit("order:updated", fullOrder);
-
-    res.json(fullOrder);
-  } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
-  }
-});
-
-// Apply discount to order
-router.patch("/orders/:orderId/discount", requireAuth, requireRole("manager"), async (req, res) => {
-  try {
-    const orderId = parseInt(req.params.orderId as string);
-    const { discount, reason } = req.body as { discount: number; reason?: string };
-
-    if (discount < 0) {
-      res.status(400).json({ error: "validation_error", message: "Хөнгөлөлт 0-ээс бага байж болохгүй" });
-      return;
-    }
-
-    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
-    if (!order) { res.status(404).json({ error: "not_found" }); return; }
-    if (order.status === "paid" || order.status === "cancelled") {
-      res.status(400).json({ error: "invalid_action", message: "Дууссан захиалгад хөнгөлөлт хийх боломжгүй" });
-      return;
-    }
-
-    if (discount > Number(order.totalAmount)) {
-      res.status(400).json({ error: "validation_error", message: "Хөнгөлөлт нийт дүнгээс хэтэрч болохгүй" });
-      return;
-    }
-
-    await db.update(ordersTable).set({
-      discount: String(discount),
-      discountReason: reason ?? null,
-      updatedAt: new Date(),
-    }).where(eq(ordersTable.id, orderId));
-
-    const fullOrder = await getOrderWithItems(orderId);
-    const io: SocketIOServer = req.app.get("io");
-    io.to(`restaurant_1`).emit("order:updated", fullOrder);
 
     res.json(fullOrder);
   } catch (err) {

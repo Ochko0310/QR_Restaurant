@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useStore } from "@/hooks/use-store";
 import { useStaffRealtime } from "@/hooks/use-realtime";
+import { socket } from "@/lib/socket";
 import {
   useGetOrders, useGetTables, useGetMenuCategories, useUpdateOrderStatus,
   useGetTableQr, useGetReportSummary, useUpdateMenuItem, useDeleteMenuItem,
@@ -20,14 +21,14 @@ import {
   Wifi, WifiOff, TableProperties, Banknote, ArrowRight,
   CalendarDays, Download, Pencil, Users, ClipboardList,
   Minus, Search, Building2, UserCheck, UserX, View,
-  Upload,
+  Upload, Package, Bell, AlertTriangle,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Star, MapPin, Image, MessageSquare, Settings, Phone, Instagram, Facebook,
-  CalendarPlus, Timer, Percent, AlertCircle,
+  CalendarPlus, Timer, AlertCircle,
 } from "lucide-react";
 
 /* ─── Image Upload Helper ─── */
@@ -101,7 +102,7 @@ function ImageUploadField({ value, onChange, label }: { value: string; onChange:
   );
 }
 
-type Tab = "orders" | "summary" | "menu" | "reports" | "tables" | "reservations" | "banners" | "reviews" | "settings";
+type Tab = "orders" | "summary" | "menu" | "reports" | "tables" | "reservations" | "banners" | "reviews" | "settings" | "inventory";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
@@ -123,54 +124,15 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Цуцалсан",
 };
 
-function printKitchenReceipt(order: Order) {
-  const time = format(new Date(order.createdAt), "HH:mm");
-  const date = format(new Date(order.createdAt), "yyyy-MM-dd");
-  const html = `
-<!DOCTYPE html><html><head><meta charset="UTF-8" /><title>Гал тогооны баримт #${order.id}</title>
-<style>
-  @page { size: 80mm auto; margin: 4mm; }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Courier New', monospace; font-size: 14px; color: #000; width: 72mm; padding: 4px; }
-  .center { text-align: center; } .bold { font-weight: bold; }
-  .divider { border-top: 2px dashed #000; margin: 8px 0; }
-  .divider-solid { border-top: 2px solid #000; margin: 8px 0; }
-  .row { display: flex; justify-content: space-between; margin: 4px 0; }
-  .item-qty { font-weight: bold; font-size: 16px; min-width: 30px; text-align: right; }
-  .note { font-size: 12px; color: #444; margin-top: 2px; }
-  .big-order { font-size: 36px; font-weight: bold; text-align: center; margin: 8px 0; }
-  .table-info { font-size: 18px; font-weight: bold; text-align: center; background: #000; color: #fff; padding: 4px; margin: 6px 0; }
-</style></head><body>
-  <div class="center bold" style="font-size:16px;">★ ГАЛ ТОГООНЫ БАРИМТ ★</div>
-  <div class="divider-solid"></div>
-  <div class="table-info">${order.tableName ?? "Ширээ"}</div>
-  <div class="big-order">#${order.id}</div>
-  <div class="row note"><span>Цаг: ${time}</span><span>${date}</span></div>
-  <div class="divider"></div>
-  <div class="bold" style="margin-bottom:6px;">ЗАХИАЛСАН ХООЛ:</div>
-  ${order.items.map(item => `
-    <div class="row"><span style="flex:1">${item.menuItemName}</span><span class="item-qty">× ${item.quantity}</span></div>
-    ${item.notes ? `<div class="note">  → ${item.notes}</div>` : ""}
-  `).join("")}
-  <div class="divider-solid"></div>
-  <div class="center note">Нийт: ₮${Number(order.totalAmount).toLocaleString()}</div>
-  <div class="divider"></div>
-</body></html>`;
-  const win = window.open("", "_blank", "width=400,height=600");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  setTimeout(() => { win.print(); win.close(); }, 300);
-}
-
 // ── Payment modal ──────────────────────────────────────────────────────────────
-function PaymentModal({ order, onConfirm, onClose }: {
-  order: Order;
+function PaymentModal({ orders, pendingSiblings, onConfirm, onClose }: {
+  orders: Order[];
+  pendingSiblings?: Order[];
   onConfirm: () => void;
   onClose: () => void;
 }) {
-  const total = Number(order.totalAmount);
+  const primary = orders[0]!;
+  const total = orders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
   const [cash, setCash] = useState("");
   const cashNum = parseFloat(cash) || 0;
   const change = cashNum - total;
@@ -187,25 +149,54 @@ function PaymentModal({ order, onConfirm, onClose }: {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
-            <h2 className="font-bold text-lg">Төлбөр авах</h2>
-            <p className="text-sm text-muted-foreground">Захиалга #{order.id} · {order.tableName}</p>
+            <h2 className="font-bold text-lg">Төлбөр авах · {primary.tableName}</h2>
+            <p className="text-sm text-muted-foreground">
+              {orders.length > 1
+                ? `${orders.length} захиалга: ${orders.map(o => `#${o.id}`).join(", ")}`
+                : `Захиалга #${primary.id}`}
+            </p>
           </div>
           <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted/50">
             <X size={18} />
           </button>
         </div>
 
-        {/* Items summary */}
-        <div className="px-6 py-4 space-y-2 border-b border-border max-h-40 overflow-y-auto">
-          {order.items.map(item => (
-            <div key={item.id} className="flex items-center justify-between text-sm">
-              <span className="flex items-center gap-2 text-muted-foreground">
-                <span className="bg-primary/10 text-primary w-5 h-5 flex items-center justify-center rounded text-xs font-bold">
-                  {item.quantity}
-                </span>
-                {item.menuItemName}
-              </span>
-              <span>₮{(Number(item.unitPrice) * item.quantity).toLocaleString()}</span>
+        {/* Pending sibling warning */}
+        {pendingSiblings && pendingSiblings.length > 0 && (
+          <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs flex items-start gap-2">
+            <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+            <div>
+              Энэ ширээн дээр бэлтгэгдэж буй захиалга байна (
+              {pendingSiblings.map(o => `#${o.id}`).join(", ")}
+              ). Тооцоонд ороогүй — бэлэн болсны дараа тусад нь авна.
+            </div>
+          </div>
+        )}
+
+        {/* Items summary — grouped by order if multiple */}
+        <div className="px-6 py-4 space-y-3 border-b border-border max-h-56 overflow-y-auto">
+          {orders.map((o, idx) => (
+            <div key={o.id} className="space-y-2">
+              {orders.length > 1 && (
+                <div className="flex items-center justify-between text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  <span>Захиалга #{o.id}</span>
+                  <span>₮{Number(o.totalAmount).toLocaleString()}</span>
+                </div>
+              )}
+              {o.items.map(item => (
+                <div key={item.id} className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 text-muted-foreground">
+                    <span className="bg-primary/10 text-primary w-5 h-5 flex items-center justify-center rounded text-xs font-bold">
+                      {item.quantity}
+                    </span>
+                    {item.menuItemName}
+                  </span>
+                  <span>₮{(Number(item.unitPrice) * item.quantity).toLocaleString()}</span>
+                </div>
+              ))}
+              {orders.length > 1 && idx < orders.length - 1 && (
+                <div className="border-b border-border/50" />
+              )}
             </div>
           ))}
         </div>
@@ -279,6 +270,103 @@ function PaymentModal({ order, onConfirm, onClose }: {
   );
 }
 
+function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => void }) {
+  const pm = (order as any).paymentMethod as "cash" | "bank" | undefined;
+  const total = Number(order.totalAmount);
+  const subtotal = order.items.reduce(
+    (sum, it) => sum + Number(it.unitPrice) * it.quantity,
+    0,
+  );
+  const createdAt = new Date(order.createdAt);
+  const paidAtRaw = (order as any).paidAt;
+  const paidAt = paidAtRaw ? new Date(paidAtRaw) : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div>
+            <h2 className="font-bold text-lg">Захиалгын түүх</h2>
+            <p className="text-sm text-muted-foreground">
+              Захиалга #{order.id} · {order.tableName}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted/50"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-6 py-4 space-y-2 border-b border-border max-h-56 overflow-y-auto">
+          {order.items.map((item) => (
+            <div key={item.id} className="flex items-start justify-between gap-3 text-sm">
+              <span className="flex items-start gap-2 text-muted-foreground flex-1 min-w-0">
+                <span className="bg-primary/10 text-primary w-5 h-5 flex items-center justify-center rounded text-xs font-bold flex-shrink-0 mt-0.5">
+                  {item.quantity}
+                </span>
+                <span className="truncate">{item.menuItemName}</span>
+              </span>
+              <span className="flex-shrink-0">
+                ₮{(Number(item.unitPrice) * item.quantity).toLocaleString()}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="px-6 py-4 space-y-2 border-b border-border text-sm">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span>Дэд дүн</span>
+            <span>₮{subtotal.toLocaleString()}</span>
+          </div>
+          <div className="flex items-center justify-between pt-2 border-t border-border">
+            <span className="font-medium">Нийт дүн</span>
+            <span className="text-xl font-bold text-primary">
+              ₮{total.toLocaleString()}
+            </span>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 space-y-3 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Төлбөрийн төрөл</span>
+            {pm === "bank" ? (
+              <span className="px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-bold flex items-center gap-1">
+                <Banknote size={12} /> Банк
+              </span>
+            ) : (
+              <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1">
+                <Banknote size={12} /> Бэлэн
+              </span>
+            )}
+          </div>
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <Clock size={12} /> Үүссэн
+            </span>
+            <span>{format(createdAt, "yyyy-MM-dd HH:mm")}</span>
+          </div>
+          {paidAt && (
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <CheckCheck size={12} /> Төлсөн
+              </span>
+              <span>{format(paidAt, "yyyy-MM-dd HH:mm")}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 pb-6">
+          <Button variant="outline" className="w-full" onClick={onClose}>
+            Хаах
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function StaffDashboard() {
   const { user, token, logout } = useStore();
   const [, setLocation] = useLocation();
@@ -295,6 +383,7 @@ export default function StaffDashboard() {
     { id: "summary", label: "Нэгтгэл", icon: <ClipboardList size={16} />, roles: ["manager", "cashier"] },
     { id: "menu", label: "Цэс", icon: <Utensils size={16} />, roles: ["manager"] },
     { id: "reports", label: "Тайлан", icon: <BarChart3 size={16} />, roles: ["manager"] },
+    { id: "inventory", label: "Бараа", icon: <Package size={16} />, roles: ["manager", "cashier"] },
     { id: "tables", label: "Ширээ", icon: <TableProperties size={16} />, roles: ["manager"] },
     { id: "reservations", label: "Захиалга", icon: <CalendarPlus size={16} />, roles: ["manager", "waiter"] },
     { id: "banners", label: "Зар", icon: <Image size={16} />, roles: ["manager"] },
@@ -324,6 +413,7 @@ export default function StaffDashboard() {
               {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
               <span className="hidden sm:inline">{connected ? "Бодит цаг" : "Офлайн"}</span>
             </div>
+            <NotificationBell />
             <Button variant="ghost" size="sm" onClick={() => { logout(); setLocation("/staff/login"); }}>
               <LogOut size={16} />
             </Button>
@@ -351,6 +441,7 @@ export default function StaffDashboard() {
         {activeTab === "summary" && <SummaryView />}
         {activeTab === "menu" && <MenuManagement />}
         {activeTab === "reports" && <ReportsView />}
+        {activeTab === "inventory" && <InventoryView />}
         {activeTab === "tables" && <TablesView />}
         {activeTab === "reservations" && <ReservationsManagement />}
         {activeTab === "banners" && <BannersManagement />}
@@ -372,7 +463,7 @@ function OrdersView({ role }: { role: string }) {
   const [payingOrder, setPayingOrder] = useState<Order | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [discountOrder, setDiscountOrder] = useState<Order | null>(null);
+  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
 
   // Chef only sees preparing orders; waiter sees pending+ready+served
   const active = orders?.filter((o) => {
@@ -385,25 +476,59 @@ function OrdersView({ role }: { role: string }) {
     return o.tableName?.toLowerCase().includes(q) || String(o.id).includes(q) || o.items?.some((i: any) => i.menuItemName?.toLowerCase().includes(q));
   }) ?? [];
 
+  // Totals across all active orders on the same table (excludes paid/cancelled)
+  // so cashier can see the combined amount owed per shared-QR group.
+  const tableGroupTotals = (() => {
+    const map = new Map<number, { total: number; count: number }>();
+    const activeForTotals = (orders ?? []).filter(o => !["paid", "cancelled"].includes(o.status));
+    for (const o of activeForTotals) {
+      const prev = map.get(o.tableId) ?? { total: 0, count: 0 };
+      prev.total += Number(o.totalAmount);
+      prev.count += 1;
+      map.set(o.tableId, prev);
+    }
+    return map;
+  })();
+
   const done = orders?.filter((o) => o.status === "paid").slice(0, 5) ?? [];
 
   const handle = (orderId: number, status: string) => {
     updateStatus.mutate(
       { orderId, data: { status: status as "confirmed" | "preparing" | "ready" | "served" | "paid" | "cancelled" } },
-      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetOrdersQueryKey() }) }
+      {
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetOrdersQueryKey() }),
+        onError: (err: any) => {
+          const msg = err?.response?.data?.message || err?.message || "Статус шинэчилж чадсангүй";
+          toast({ title: "Алдаа", description: msg, variant: "destructive" });
+        },
+      }
     );
   };
 
-  const handlePrintAndConfirm = (order: Order) => {
-    printKitchenReceipt(order);
+  const handleSendToKitchen = (order: Order) => {
     handle(order.id, "preparing");
-    toast({ title: `Захиалга #${order.id} — баримт хэвлэгдлээ` });
+    toast({ title: `Захиалга #${order.id} — гал тогоонд илгээгдлээ` });
   };
 
-  const handlePaymentConfirm = (order: Order) => {
-    handle(order.id, "paid");
-    setPayingOrder(null);
-    toast({ title: `Захиалга #${order.id} — төлбөр амжилттай авлаа ✓` });
+  const handlePaymentConfirm = async (ordersToPay: Order[]) => {
+    try {
+      for (const o of ordersToPay) {
+        await updateStatus.mutateAsync({
+          orderId: o.id,
+          data: { status: "paid" },
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: getGetOrdersQueryKey() });
+      setPayingOrder(null);
+      const label =
+        ordersToPay.length > 1
+          ? `${ordersToPay.length} захиалга (${ordersToPay.map(o => `#${o.id}`).join(", ")})`
+          : `Захиалга #${ordersToPay[0]!.id}`;
+      toast({ title: `${label} — төлбөр амжилттай авлаа ✓` });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || "Төлбөр авч чадсангүй";
+      toast({ title: "Алдаа", description: msg, variant: "destructive" });
+    }
   };
 
   const handleCancel = (order: Order) => {
@@ -417,21 +542,6 @@ function OrdersView({ role }: { role: string }) {
       await customFetch(`/api/orders/${orderId}/items/${itemId}`, { method: "DELETE" });
       queryClient.invalidateQueries({ queryKey: getGetOrdersQueryKey() });
       toast({ title: "Хоол хасагдлаа" });
-    } catch {
-      toast({ title: "Алдаа гарлаа", variant: "destructive" });
-    }
-  };
-
-  const handleDiscount = async (orderId: number, amount: number, reason: string) => {
-    try {
-      await customFetch(`/api/orders/${orderId}/discount`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ discount: amount, reason }),
-      });
-      queryClient.invalidateQueries({ queryKey: getGetOrdersQueryKey() });
-      setDiscountOrder(null);
-      toast({ title: "Хөнгөлөлт хийгдлээ" });
     } catch {
       toast({ title: "Алдаа гарлаа", variant: "destructive" });
     }
@@ -463,7 +573,7 @@ function OrdersView({ role }: { role: string }) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {active.map((order) => (
-              <OrderCard key={order.id} order={order}>
+              <OrderCard key={order.id} order={order} tableGroup={tableGroupTotals.get(order.tableId)}>
                 <Button className="w-full bg-green-500 hover:bg-green-600 text-white font-bold text-base py-5"
                   onClick={() => { handle(order.id, "ready"); toast({ title: `#${order.id} бэлэн болсон!` }); }}>
                   <CheckCheck size={18} className="mr-2" /> Бэлэн болсон
@@ -487,7 +597,7 @@ function OrdersView({ role }: { role: string }) {
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground bg-card/50 border border-border rounded-xl px-4 py-3">
           <span className="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full text-xs font-bold">Шинэ</span>
           <ArrowRight size={12} />
-          <span>Баримт хэвлэж гал тогоонд өгнө</span>
+          <span>Гал тогоонд өгнө</span>
           <ArrowRight size={12} />
           <span className="bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full text-xs font-bold">Бэлэн</span>
           <ArrowRight size={12} />
@@ -503,10 +613,10 @@ function OrdersView({ role }: { role: string }) {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {newOrders.map((order) => (
-                <OrderCard key={order.id} order={order}>
+                <OrderCard key={order.id} order={order} tableGroup={tableGroupTotals.get(order.tableId)}>
                   <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold"
-                    onClick={() => handlePrintAndConfirm(order)}>
-                    <Printer size={15} className="mr-2" /> Гал тогоонд өгөх
+                    onClick={() => handleSendToKitchen(order)}>
+                    <ChefHat size={15} className="mr-2" /> Гал тогоонд өгөх
                   </Button>
                 </OrderCard>
               ))}
@@ -523,7 +633,7 @@ function OrdersView({ role }: { role: string }) {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {readyOrders.map((order) => (
-                <OrderCard key={order.id} order={order}>
+                <OrderCard key={order.id} order={order} tableGroup={tableGroupTotals.get(order.tableId)}>
                   <Button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold"
                     onClick={() => { handle(order.id, "served"); toast({ title: `#${order.id} зөөгдлөө` }); }}>
                     <ArrowRight size={15} className="mr-2" /> Зөөсөн
@@ -547,13 +657,27 @@ function OrdersView({ role }: { role: string }) {
   /* ─── Manager / Cashier Full View ─── */
   return (
     <>
-      {payingOrder && (
-        <PaymentModal
-          order={payingOrder}
-          onConfirm={() => handlePaymentConfirm(payingOrder)}
-          onClose={() => setPayingOrder(null)}
-        />
-      )}
+      {payingOrder && (() => {
+        const payable = (orders ?? []).filter(
+          (o) =>
+            o.tableId === payingOrder.tableId &&
+            (o.status === "ready" || o.status === "served"),
+        );
+        const group = payable.length > 0 ? payable : [payingOrder];
+        const pendingSiblings = (orders ?? []).filter(
+          (o) =>
+            o.tableId === payingOrder.tableId &&
+            ["pending", "confirmed", "preparing"].includes(o.status),
+        );
+        return (
+          <PaymentModal
+            orders={group}
+            pendingSiblings={pendingSiblings}
+            onConfirm={() => handlePaymentConfirm(group)}
+            onClose={() => setPayingOrder(null)}
+          />
+        );
+      })()}
 
       {createOpen && (
         <CreateOrderModal
@@ -562,12 +686,8 @@ function OrdersView({ role }: { role: string }) {
         />
       )}
 
-      {discountOrder && (
-        <DiscountModal
-          order={discountOrder}
-          onConfirm={(amount, reason) => handleDiscount(discountOrder.id, amount, reason)}
-          onClose={() => setDiscountOrder(null)}
-        />
+      {detailOrder && (
+        <OrderDetailModal order={detailOrder} onClose={() => setDetailOrder(null)} />
       )}
 
       <div className="space-y-8">
@@ -575,8 +695,6 @@ function OrdersView({ role }: { role: string }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground bg-card/50 border border-border rounded-xl px-4 py-3 flex-1">
             <span className="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full text-xs font-bold">Шинэ</span>
-            <ArrowRight size={12} />
-            <span>Баримт хэвлэж гал тогоонд өгнө</span>
             <ArrowRight size={12} />
             <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2 py-0.5 rounded-full text-xs font-bold">Гал тогоонд</span>
             <ArrowRight size={12} />
@@ -614,27 +732,19 @@ function OrdersView({ role }: { role: string }) {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {active.map((order) => (
-                <OrderCard key={order.id} order={order} onVoidItem={(isManager || role === "cashier") ? handleVoidItem : undefined}>
+                <OrderCard key={order.id} order={order} tableGroup={tableGroupTotals.get(order.tableId)} onVoidItem={(isManager || role === "cashier") ? handleVoidItem : undefined}>
                   {(order.status === "pending" || order.status === "confirmed") && (
                     <div className="flex flex-col gap-2">
                       <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold"
-                        onClick={() => handlePrintAndConfirm(order)}>
-                        <Printer size={15} className="mr-2" /> Баримт хэвлэх — Гал тогоонд
+                        onClick={() => handleSendToKitchen(order)}>
+                        <ChefHat size={15} className="mr-2" /> Гал тогоонд өгөх
                       </Button>
-                      <div className="flex gap-2">
-                        {isManager && (
-                          <button onClick={() => setDiscountOrder(order)}
-                            className="flex-1 text-xs text-muted-foreground hover:text-primary transition-colors text-center py-1 flex items-center justify-center gap-1">
-                            <Percent size={10} /> Хөнгөлөлт
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleCancel(order)}
-                          className="flex-1 text-xs text-muted-foreground hover:text-destructive transition-colors text-center py-1"
-                        >
-                          Цуцлах
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => handleCancel(order)}
+                        className="w-full text-xs text-muted-foreground hover:text-destructive transition-colors text-center py-1"
+                      >
+                        Цуцлах
+                      </button>
                     </div>
                   )}
 
@@ -650,7 +760,7 @@ function OrdersView({ role }: { role: string }) {
                             <Banknote size={14} /> Банкаар төлсөн
                           </div>
                           <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold"
-                            onClick={() => handlePaymentConfirm(order)}>
+                            onClick={() => handlePaymentConfirm([order])}>
                             <CheckCheck size={15} className="mr-2" /> Дуусга
                           </Button>
                         </div>
@@ -670,7 +780,7 @@ function OrdersView({ role }: { role: string }) {
                           <Banknote size={14} /> Банкаар төлсөн
                         </div>
                         <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold"
-                          onClick={() => handlePaymentConfirm(order)}>
+                          onClick={() => handlePaymentConfirm([order])}>
                           <CheckCheck size={15} className="mr-2" /> Дуусга
                         </Button>
                       </div>
@@ -693,11 +803,16 @@ function OrdersView({ role }: { role: string }) {
             <h3 className="text-base font-semibold text-muted-foreground mb-3">Саяхан дууссан</h3>
             <div className="space-y-2">
               {done.map((order) => (
-                <div key={order.id} className="flex items-center justify-between px-4 py-3 bg-card border border-border rounded-xl text-sm opacity-60">
+                <button
+                  key={order.id}
+                  type="button"
+                  onClick={() => setDetailOrder(order)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-card border border-border rounded-xl text-sm opacity-70 hover:opacity-100 hover:border-primary/40 transition text-left"
+                >
                   <span className="text-muted-foreground">#{order.id} · {order.tableName}</span>
                   <span className="text-muted-foreground">{format(new Date(order.createdAt), "HH:mm")}</span>
                   <span className="font-bold">₮{Number(order.totalAmount).toLocaleString()}</span>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -1507,17 +1622,335 @@ function MenuManagement() {
   );
 }
 
-function ReportsView() {
-  const { data: report, isLoading } = useGetReportSummary();
-  const COLORS = ["#f59e0b", "#3b82f6", "#f97316", "#22c55e", "#a855f7", "#ef4444", "#06b6d4"];
+/* ─── Inventory (External goods) ─── */
 
-  if (isLoading) return <Spinner />;
+type InventoryItem = {
+  id: number;
+  name: string;
+  type: string;
+  quantity: number;
+  threshold: number;
+  imageUrl: string | null;
+  price: number;
+  categoryId: number | null;
+  menuItemId: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function useInventory() {
+  return useQuery<InventoryItem[]>({
+    queryKey: ["inventory"],
+    queryFn: () => customFetch<InventoryItem[]>("/api/inventory"),
+  });
+}
+
+function InventoryView() {
+  const { data, isLoading, refetch } = useInventory();
+  const { toast } = useToast();
+  const [showAdd, setShowAdd] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+
+  if (isLoading && !data) return <Spinner />;
+
+  const items = data ?? [];
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="text-xl font-bold flex items-center gap-2"><Package size={20} /> Барааны нөөц</h2>
+        <Button size="sm" onClick={() => setShowAdd(true)}><Plus size={16} /> Бараа нэмэх</Button>
+      </div>
+
+      {showAdd && (
+        <InventoryForm
+          onClose={() => setShowAdd(false)}
+          onDone={() => { refetch(); setShowAdd(false); toast({ title: "Бараа нэмэгдлээ" }); }}
+        />
+      )}
+
+      {items.length === 0 ? (
+        <div className="bg-card border border-border rounded-2xl p-10 text-center text-muted-foreground text-sm">
+          <Package size={32} className="mx-auto mb-2 opacity-30" />
+          Бараа байхгүй байна
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {items.map((item) => {
+            const low = item.quantity <= item.threshold;
+            return (
+              <div key={item.id} className={`bg-card border rounded-2xl overflow-hidden ${low ? "border-orange-500/40" : "border-border"}`}>
+                {item.imageUrl ? (
+                  <div className="h-32 w-full bg-muted">
+                    <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="h-32 w-full bg-muted/30 flex items-center justify-center">
+                    <Package size={32} className="opacity-20" />
+                  </div>
+                )}
+                <div className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">{item.type}</p>
+                    </div>
+                    {low && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 flex items-center gap-1">
+                        <AlertTriangle size={10} /> Бага
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <p className="text-2xl font-bold">{item.quantity}<span className="text-xs text-muted-foreground font-normal"> ш</span></p>
+                      <p className="text-[10px] text-muted-foreground">доод хэмжээ: {item.threshold}</p>
+                      <p className="text-xs text-primary font-semibold mt-0.5">₮{Number(item.price).toLocaleString()}</p>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setEditingId(item.id)}
+                        className="p-2 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`"${item.name}" устгах уу?`)) return;
+                          await customFetch(`/api/inventory/${item.id}`, { method: "DELETE" });
+                          refetch();
+                        }}
+                        className="p-2 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                {editingId === item.id && (
+                  <InventoryForm
+                    item={item}
+                    onClose={() => setEditingId(null)}
+                    onDone={() => { refetch(); setEditingId(null); toast({ title: "Хадгалагдлаа" }); }}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InventoryForm({ item, onClose, onDone }: { item?: InventoryItem; onClose: () => void; onDone: () => void }) {
+  const [name, setName] = useState(item?.name ?? "");
+  const [type, setType] = useState(item?.type ?? "");
+  const [quantity, setQuantity] = useState(String(item?.quantity ?? 0));
+  const [threshold, setThreshold] = useState(String(item?.threshold ?? 5));
+  const [price, setPrice] = useState(String(item?.price ?? 0));
+  const [imageUrl, setImageUrl] = useState(item?.imageUrl ?? "");
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !type.trim()) {
+      toast({ title: "Нэр болон төрлийг бөглөнө үү", variant: "destructive" });
+      return;
+    }
+    const priceNum = parseFloat(price);
+    if (!Number.isFinite(priceNum) || priceNum < 0) {
+      toast({ title: "Үнэ буруу байна", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const body = {
+        name: name.trim(),
+        type: type.trim(),
+        quantity: parseInt(quantity) || 0,
+        threshold: parseInt(threshold) || 0,
+        price: priceNum,
+        imageUrl: imageUrl || null,
+      };
+      if (item) {
+        await customFetch(`/api/inventory/${item.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      } else {
+        await customFetch("/api/inventory", { method: "POST", body: JSON.stringify(body) });
+      }
+      onDone();
+    } catch (err) {
+      toast({ title: "Алдаа гарлаа", description: String(err), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={save} className="bg-card border border-border rounded-2xl p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold">{item ? "Бараа засах" : "Шинэ бараа"}</h3>
+        <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-muted-foreground block mb-1">Нэр</label>
+          <input value={name} onChange={e => setName(e.target.value)} required
+            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground block mb-1">Төрөл (ундаа, дарс, ус...)</label>
+          <input value={type} onChange={e => setType(e.target.value)} required
+            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground block mb-1">Тоо ширхэг</label>
+          <input type="number" min="0" value={quantity} onChange={e => setQuantity(e.target.value)}
+            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground block mb-1">Доод хэмжээ</label>
+          <input type="number" min="0" value={threshold} onChange={e => setThreshold(e.target.value)}
+            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="text-xs text-muted-foreground block mb-1">Үнэ (₮)</label>
+          <input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} required
+            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          <p className="text-[10px] text-muted-foreground mt-1">Энэ бараа "{`Бараа`}" ангилалд цэсэнд автоматаар нэмэгдэнэ.</p>
+        </div>
+      </div>
+      <ImageUploadField value={imageUrl} onChange={setImageUrl} label="Зураг" />
+      <div className="flex gap-2">
+        <Button type="submit" disabled={saving} className="flex-1">{saving ? "Хадгалж байна..." : "Хадгалах"}</Button>
+        <Button type="button" variant="outline" onClick={onClose}>Цуцлах</Button>
+      </div>
+    </form>
+  );
+}
+
+/* ─── Notifications ─── */
+
+type NotificationRow = {
+  id: number;
+  type: string;
+  title: string;
+  message: string;
+  data: Record<string, unknown> | null;
+  read: boolean;
+  createdAt: string;
+};
+
+function NotificationBell() {
+  const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const { data } = useQuery<NotificationRow[]>({
+    queryKey: ["notifications"],
+    queryFn: () => customFetch<NotificationRow[]>("/api/notifications"),
+    refetchInterval: 30000,
+  });
+
+  useEffect(() => {
+    const onNew = () => queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    socket.on("notification:new", onNew);
+    return () => { socket.off("notification:new", onNew); };
+  }, [queryClient]);
+
+  const items = data ?? [];
+  const unread = items.filter(n => !n.read).length;
+
+  const markAllRead = async () => {
+    await customFetch("/api/notifications/read-all", { method: "POST" });
+    queryClient.invalidateQueries({ queryKey: ["notifications"] });
+  };
+
+  const clearAll = async () => {
+    if (!confirm("Бүх мэдэгдлийг устгах уу?")) return;
+    await customFetch("/api/notifications", { method: "DELETE" });
+    queryClient.invalidateQueries({ queryKey: ["notifications"] });
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="relative p-2 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+      >
+        <Bell size={18} />
+        {unread > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] min-w-[16px] h-4 rounded-full flex items-center justify-center px-1 font-bold">
+            {unread > 99 ? "99+" : unread}
+          </span>
+        )}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 mt-2 w-80 max-h-[70vh] bg-card border border-border rounded-2xl shadow-2xl z-50 flex flex-col">
+            <div className="p-3 border-b border-border flex items-center justify-between">
+              <p className="font-bold text-sm">Мэдэгдлүүд</p>
+              <div className="flex gap-1">
+                {unread > 0 && (
+                  <button onClick={markAllRead} className="text-[11px] text-primary hover:underline">Бүгдийг уншсан</button>
+                )}
+                {items.length > 0 && (
+                  <button onClick={clearAll} className="text-[11px] text-muted-foreground hover:text-red-400 ml-2">Цэвэрлэх</button>
+                )}
+              </div>
+            </div>
+            <div className="overflow-y-auto">
+              {items.length === 0 ? (
+                <div className="p-6 text-center text-muted-foreground text-xs">Мэдэгдэл алга</div>
+              ) : (
+                items.map(n => (
+                  <div key={n.id} className={`p-3 border-b border-border/50 last:border-0 ${!n.read ? "bg-primary/5" : ""}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold text-sm">{n.title}</p>
+                      {!n.read && <span className="w-2 h-2 rounded-full bg-primary mt-1.5 flex-shrink-0" />}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{n.message}</p>
+                    <p className="text-[10px] text-muted-foreground/70 mt-1">{format(new Date(n.createdAt), "MM-dd HH:mm")}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ReportsView() {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const [from, setFrom] = useState(toLocalDatetimeValue(startOfToday));
+  const [to, setTo] = useState(toLocalDatetimeValue(now));
+  const { data: report, isLoading, refetch } = useGetReportSummary({ from, to });
+
+  const setRange = (type: "today" | "7d" | "30d" | "all") => {
+    const end = new Date();
+    const start = new Date(end);
+    if (type === "today") {
+      start.setHours(0, 0, 0, 0);
+    } else if (type === "7d") {
+      start.setDate(end.getDate() - 6);
+      start.setHours(0, 0, 0, 0);
+    } else if (type === "30d") {
+      start.setDate(end.getDate() - 29);
+      start.setHours(0, 0, 0, 0);
+    } else {
+      start.setFullYear(2000, 0, 1);
+      start.setHours(0, 0, 0, 0);
+    }
+    setFrom(toLocalDatetimeValue(start));
+    setTo(toLocalDatetimeValue(end));
+  };
+
+  if (isLoading && !report) return <Spinner />;
   if (!report) return <div className="text-center py-16 text-muted-foreground">Тайлан олдсонгүй</div>;
 
-  const statusData = Object.entries(report.ordersByStatus ?? {}).map(([k, v]) => ({
-    name: STATUS_LABELS[k] ?? k,
-    value: v as number,
-  }));
   const topItems = (report.topItems ?? []) as Array<{ name: string; quantity: number; revenue: number }>;
   const peakHours = ((report as any).peakHours ?? []).slice(0, 8).map((h: any) => ({
     name: `${String(h.hour).padStart(2, "0")}:00`,
@@ -1529,17 +1962,51 @@ function ReportsView() {
     <div className="space-y-6">
       <h2 className="text-xl font-bold">Борлуулалтын тайлан</h2>
 
+      {/* Date range filter */}
+      <div className="space-y-3">
+        <div className="flex gap-2 flex-wrap">
+          {[
+            { label: "Өнөөдөр", type: "today" as const },
+            { label: "Сүүлийн 7 хоног", type: "7d" as const },
+            { label: "Сүүлийн 30 хоног", type: "30d" as const },
+            { label: "Бүгд", type: "all" as const },
+          ].map(({ label, type }) => (
+            <button key={type} onClick={() => setRange(type)}
+              className="px-3 py-1.5 rounded-xl text-sm font-medium border border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all">
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-3 items-end flex-wrap">
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1.5 flex items-center gap-1">
+              <CalendarDays size={12} /> Эхлэх
+            </label>
+            <input type="datetime-local" value={from} onChange={e => setFrom(e.target.value)}
+              className="bg-card border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary [color-scheme:dark]" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1.5 flex items-center gap-1">
+              <CalendarDays size={12} /> Төгсөх
+            </label>
+            <input type="datetime-local" value={to} onChange={e => setTo(e.target.value)}
+              className="bg-card border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary [color-scheme:dark]" />
+          </div>
+          <Button size="sm" onClick={() => refetch()} disabled={isLoading}>
+            {isLoading ? "Уншиж байна..." : "Харах"}
+          </Button>
+        </div>
+      </div>
+
       {/* Main stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <StatCard label="Нийт захиалга" value={String(report.totalOrders)} />
         <StatCard label="Нийт орлого" value={`₮${Number(report.totalRevenue).toLocaleString()}`} primary />
-        <StatCard label="Хөнгөлөлт" value={`₮${Number((report as any).totalDiscount ?? 0).toLocaleString()}`} />
-        <StatCard label="Цэвэр орлого" value={`₮${Number((report as any).netRevenue ?? report.totalRevenue).toLocaleString()}`} primary />
+        <StatCard label="Дундаж дүн" value={`₮${Number(report.averageOrderValue).toFixed(0)}`} />
       </div>
 
       {/* Service stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard label="Дундаж дүн" value={`₮${Number(report.averageOrderValue).toFixed(0)}`} />
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <StatCard label="Дунд. үйлчилгээ" value={`${(report as any).avgServiceMinutes ?? 0} мин`} />
         <StatCard label="Ширээний эргэлт" value={`${(report as any).tableTurnover ?? 0}`} />
         <StatCard label="Цуцалсан" value={`${(report as any).cancelledCount ?? 0}`} />
@@ -1577,34 +2044,42 @@ function ReportsView() {
           </div>
         )}
 
-        {/* Status pie chart */}
-        <div className="bg-card border border-border rounded-2xl p-5">
-          <h3 className="font-bold mb-4">Захиалгын статусаар</h3>
-          <div className="h-52">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75}>
-                  {statusData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Top items */}
+        {/* Top items — full list, sorted by quantity desc */}
         <div className="bg-card border border-border rounded-2xl p-5 md:col-span-2">
-          <h3 className="font-bold mb-4">Хамгийн их захиалагдсан (Top 10)</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topItems} layout="vertical">
-                <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-                <Tooltip formatter={(v: number) => [`${v} ш`, "Тоо"]} />
-                <Bar dataKey="quantity" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h3 className="font-bold">Хамгийн их захиалагдсан хоол</h3>
+            <span className="text-xs text-muted-foreground">{topItems.length} төрөл</span>
           </div>
+          {topItems.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">Мэдээлэл алга</div>
+          ) : (
+            <>
+              <div style={{ height: Math.max(240, topItems.length * 32 + 40) }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={topItems} layout="vertical" margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
+                    <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                    <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                    <Tooltip formatter={(v: number, key: string) => [key === "quantity" ? `${v} ш` : `₮${Number(v).toLocaleString()}`, key === "quantity" ? "Тоо" : "Орлого"]} />
+                    <Bar dataKey="quantity" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-4 border-t border-border pt-3 space-y-1 max-h-72 overflow-y-auto">
+                {topItems.map((item, idx) => (
+                  <div key={item.name} className="flex items-center justify-between text-sm py-1.5 px-2 rounded-lg hover:bg-muted/30">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-muted-foreground text-xs w-6 text-right">{idx + 1}.</span>
+                      <span className="truncate">{item.name}</span>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <span className="font-semibold">{item.quantity} ш</span>
+                      <span className="text-xs text-muted-foreground w-24 text-right">₮{Number(item.revenue).toLocaleString()}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -1816,10 +2291,15 @@ function TablesView() {
   );
 }
 
-function OrderCard({ order, children, onVoidItem }: { order: Order; children?: React.ReactNode; onVoidItem?: (orderId: number, itemId: number) => void }) {
+function OrderCard({ order, children, onVoidItem, tableGroup }: {
+  order: Order;
+  children?: React.ReactNode;
+  onVoidItem?: (orderId: number, itemId: number) => void;
+  tableGroup?: { total: number; count: number };
+}) {
   const pm = (order as any).paymentMethod;
-  const discount = Number((order as any).discount ?? 0);
   const canVoid = onVoidItem && !["paid", "cancelled"].includes(order.status);
+  const showTableTotal = tableGroup && tableGroup.count > 1;
 
   return (
     <div className={`bg-card border rounded-2xl overflow-hidden shadow-sm transition-all ${
@@ -1830,20 +2310,22 @@ function OrderCard({ order, children, onVoidItem }: { order: Order; children?: R
           : "border-border"
     }`}>
       <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-muted/20">
-        <div>
-          <p className="font-bold text-sm flex items-center gap-2">
-            Захиалга #{order.id}
+        <div className="min-w-0">
+          <h3 className="font-display font-bold text-2xl leading-tight flex items-center gap-2 flex-wrap">
+            {order.tableName}
             {pm === "bank" && (
               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                 Банк
               </span>
             )}
-          </p>
-          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-            <Clock size={10} /> {format(new Date(order.createdAt), "HH:mm")} · {order.tableName}
+          </h3>
+          <p className="text-xs text-muted-foreground flex items-center gap-2 mt-1">
+            <span className="flex items-center gap-1"><Clock size={10} /> {format(new Date(order.createdAt), "HH:mm")}</span>
+            <span>·</span>
+            <span>Захиалга #{order.id}</span>
           </p>
         </div>
-        <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${STATUS_COLORS[order.status]}`}>
+        <span className={`px-2.5 py-1 rounded-full text-xs font-bold border shrink-0 ${STATUS_COLORS[order.status]}`}>
           {STATUS_LABELS[order.status]}
         </span>
       </div>
@@ -1874,16 +2356,12 @@ function OrderCard({ order, children, onVoidItem }: { order: Order; children?: R
           <span className="text-sm text-muted-foreground">Нийт</span>
           <span className="font-bold text-primary">₮{Number(order.totalAmount).toLocaleString()}</span>
         </div>
-        {discount > 0 && (
-          <div className="flex items-center justify-between mt-1">
-            <span className="text-xs text-green-400 flex items-center gap-1"><Percent size={10} /> Хөнгөлөлт</span>
-            <span className="text-xs text-green-400 font-bold">-₮{discount.toLocaleString()}</span>
-          </div>
-        )}
-        {discount > 0 && (
-          <div className="flex items-center justify-between mt-1">
-            <span className="text-sm font-medium">Төлөх дүн</span>
-            <span className="font-bold text-lg text-primary">₮{(Number(order.totalAmount) - discount).toLocaleString()}</span>
+        {showTableTotal && (
+          <div className="flex items-center justify-between mt-1 pt-1 border-t border-dashed border-border/60">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              Ширээний нийт <span className="opacity-60">· {tableGroup!.count} захиалга</span>
+            </span>
+            <span className="text-sm font-bold text-emerald-400">₮{tableGroup!.total.toLocaleString()}</span>
           </div>
         )}
       </div>
@@ -1966,39 +2444,34 @@ function BannersManagement() {
 
 function ReviewsManagement() {
   const { data: reviews, isLoading } = useQuery({ queryKey: ["reviews-all"], queryFn: () => customFetch("/api/reviews/all") as Promise<any[]> });
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  const deleteReview = useMutation({
-    mutationFn: (id: number) => customFetch(`/api/reviews/${id}`, { method: "DELETE" }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["reviews-all"] }); toast({ title: "Устгагдлаа" }); },
-  });
 
   if (isLoading) return <Spinner />;
 
   const stars = (n: number) => "★".repeat(n) + "☆".repeat(5 - n);
 
+  // Sort by rating DESC, then newest first
+  const sortedReviews = [...(reviews ?? [])].sort((a: any, b: any) => {
+    if (b.rating !== a.rating) return b.rating - a.rating;
+    return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
+  });
+
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-bold">Сэтгэгдлийн удирдлага</h2>
+      <p className="text-xs text-muted-foreground">Сайн сэтгэгдлүүд дээр нь харагдана. Хэрэглэгчийн сэтгэгдлийг устгах боломжгүй.</p>
       <div className="grid gap-3">
-        {(reviews ?? []).map((r: any) => (
+        {sortedReviews.map((r: any) => (
           <div key={r.id} className="bg-card border border-border rounded-2xl p-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="font-medium text-sm">{r.name}</p>
-                  <span className="text-yellow-400 text-sm">{stars(r.rating)}</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5"><Phone size={10} className="inline mr-1" />{r.phone}</p>
-                <p className="text-sm mt-2">{r.comment}</p>
-                <p className="text-xs text-muted-foreground mt-1">{r.createdAt ? format(new Date(r.createdAt), "yyyy-MM-dd HH:mm") : ""}</p>
-              </div>
-              <button onClick={() => deleteReview.mutate(r.id)} className="text-red-400 hover:text-red-300"><Trash2 size={16} /></button>
+            <div className="flex items-center gap-2">
+              <p className="font-medium text-sm">{r.name}</p>
+              <span className="text-yellow-400 text-sm">{stars(r.rating)}</span>
             </div>
+            <p className="text-xs text-muted-foreground mt-0.5"><Phone size={10} className="inline mr-1" />{r.phone}</p>
+            <p className="text-sm mt-2">{r.comment}</p>
+            <p className="text-xs text-muted-foreground mt-1">{r.createdAt ? format(new Date(r.createdAt), "yyyy-MM-dd HH:mm") : ""}</p>
           </div>
         ))}
-        {(reviews ?? []).length === 0 && <p className="text-muted-foreground text-sm text-center py-8">Сэтгэгдэл байхгүй</p>}
+        {sortedReviews.length === 0 && <p className="text-muted-foreground text-sm text-center py-8">Сэтгэгдэл байхгүй</p>}
       </div>
     </div>
   );
@@ -2131,72 +2604,6 @@ function OccupancyTimer({ since }: { since: string }) {
     <p className={`text-xs flex items-center gap-1 mt-0.5 ${warn ? "text-red-400" : "text-orange-400"}`}>
       <Timer size={10} /> {elapsed} {warn && <AlertCircle size={10} />}
     </p>
-  );
-}
-
-/* ─── Discount Modal ─── */
-function DiscountModal({ order, onConfirm, onClose }: {
-  order: Order;
-  onConfirm: (amount: number, reason: string) => void;
-  onClose: () => void;
-}) {
-  const total = Number(order.totalAmount);
-  const [amount, setAmount] = useState("");
-  const [reason, setReason] = useState("");
-  const [mode, setMode] = useState<"amount" | "percent">("amount");
-  const discountAmount = mode === "percent"
-    ? Math.round(total * (parseFloat(amount) || 0) / 100)
-    : parseFloat(amount) || 0;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-card border border-border rounded-2xl w-full max-w-sm shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="font-bold text-lg">Хөнгөлөлт хийх</h2>
-          <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-lg"><X size={18} /></button>
-        </div>
-        <div className="px-6 py-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Захиалга #{order.id}</span>
-            <span className="font-bold">₮{total.toLocaleString()}</span>
-          </div>
-
-          <div className="flex gap-2">
-            <button onClick={() => setMode("amount")}
-              className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${mode === "amount" ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground"}`}>
-              Дүнгээр
-            </button>
-            <button onClick={() => setMode("percent")}
-              className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${mode === "percent" ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground"}`}>
-              Хувиар %
-            </button>
-          </div>
-
-          <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
-            placeholder={mode === "percent" ? "Хувь (жишээ: 10)" : "Дүн (₮)"}
-            className="w-full bg-background border border-border rounded-xl px-4 py-3 text-lg font-bold focus:outline-none focus:border-primary text-center"
-            autoFocus min="0" max={mode === "percent" ? "100" : String(total)} />
-
-          <input value={reason} onChange={e => setReason(e.target.value)}
-            placeholder="Шалтгаан (заавал биш)"
-            className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary" />
-
-          {discountAmount > 0 && (
-            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400">
-              <span>Хөнгөлөлт</span>
-              <span className="text-xl font-bold">-₮{discountAmount.toLocaleString()}</span>
-            </div>
-          )}
-        </div>
-        <div className="px-6 pb-6 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Буцах</Button>
-          <Button className="flex-1" disabled={discountAmount <= 0 || discountAmount > total}
-            onClick={() => onConfirm(discountAmount, reason)}>
-            Хөнгөлөлт хийх
-          </Button>
-        </div>
-      </div>
-    </div>
   );
 }
 

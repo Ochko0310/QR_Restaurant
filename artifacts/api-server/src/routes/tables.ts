@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "@workspace/db";
-import { tablesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { tablesTable, tableSessionsTable, customersTable } from "@workspace/db";
+import { and, eq, isNull } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth";
 
 const router = Router();
@@ -64,10 +64,29 @@ router.patch("/tables/:tableId", requireAuth, requireRole("manager", "waiter"), 
     if (status !== undefined) {
       updates.status = status;
       if (status === "occupied") updates.occupiedSince = new Date();
-      if (status === "available") updates.occupiedSince = null;
+      if (status === "available") {
+        updates.occupiedSince = null;
+        // Rotate qr token so any photographed copy becomes useless
+        updates.qrToken = uuidv4();
+      }
     }
     const [table] = await db.update(tablesTable).set(updates).where(eq(tablesTable.id, tableId)).returning();
     if (!table) { res.status(404).json({ error: "not_found" }); return; }
+
+    if (status === "occupied") {
+      // Close any stale open sessions, then start a fresh one waiting for check-in
+      await db
+        .update(tableSessionsTable)
+        .set({ endedAt: new Date() })
+        .where(and(eq(tableSessionsTable.tableId, tableId), isNull(tableSessionsTable.endedAt)));
+      await db.insert(tableSessionsTable).values({ tableId });
+    } else if (status === "available") {
+      await db
+        .update(tableSessionsTable)
+        .set({ endedAt: new Date() })
+        .where(and(eq(tableSessionsTable.tableId, tableId), isNull(tableSessionsTable.endedAt)));
+    }
+
     res.json(table);
   } catch (err) {
     res.status(500).json({ error: "server_error", message: String(err) });
@@ -110,6 +129,66 @@ router.get("/tables/:tableId/qr", requireAuth, async (req, res) => {
       tableName: table.name,
       token: table.qrToken,
       url,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "server_error", message: String(err) });
+  }
+});
+
+router.post("/tables/:token/checkin", async (req, res) => {
+  try {
+    const { token } = req.params as { token: string };
+    const { customerId } = req.body as { customerId?: string };
+
+    if (!customerId) {
+      res.status(400).json({ error: "bad_request", message: "customerId required" });
+      return;
+    }
+
+    const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, customerId));
+    if (!customer) {
+      res.status(404).json({ error: "customer_not_found", message: "Зочны бүртгэл олдсонгүй" });
+      return;
+    }
+
+    const [table] = await db.select().from(tablesTable).where(eq(tablesTable.qrToken, token));
+    if (!table) {
+      res.status(401).json({ error: "invalid_session", message: "QR код хүчингүй" });
+      return;
+    }
+
+    if (table.status !== "occupied") {
+      res.status(403).json({ error: "table_not_active", message: "Ширээ идэвхжээгүй байна. Үйлчлэгчид хандана уу." });
+      return;
+    }
+
+    const [openSession] = await db
+      .select()
+      .from(tableSessionsTable)
+      .where(and(eq(tableSessionsTable.tableId, table.id), isNull(tableSessionsTable.endedAt)));
+
+    if (!openSession) {
+      res.status(403).json({ error: "no_session", message: "Идэвхтэй session байхгүй байна" });
+      return;
+    }
+
+    if (openSession.customerId && openSession.customerId !== customerId) {
+      res.status(403).json({ error: "session_taken", message: "Энэ ширээний session өөр зочинд холбогдсон байна" });
+      return;
+    }
+
+    if (!openSession.customerId) {
+      await db
+        .update(tableSessionsTable)
+        .set({ customerId, checkedInAt: new Date() })
+        .where(eq(tableSessionsTable.id, openSession.id));
+    }
+
+    res.json({
+      sessionId: openSession.id,
+      tableId: table.id,
+      tableName: table.name,
+      checkedIn: true,
     });
   } catch (err) {
     res.status(500).json({ error: "server_error", message: String(err) });
