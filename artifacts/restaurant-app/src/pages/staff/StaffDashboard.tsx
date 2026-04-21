@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useStore } from "@/hooks/use-store";
 import { useStaffRealtime } from "@/hooks/use-realtime";
 import { socket } from "@/lib/socket";
+import { useT } from "@/lib/i18n";
 import {
   useGetOrders, useGetTables, useGetMenuCategories, useUpdateOrderStatus,
   useGetTableQr, useGetReportSummary, useUpdateMenuItem, useDeleteMenuItem,
@@ -19,7 +20,7 @@ import {
   ChefHat, LogOut, Utensils, ShoppingBag, BarChart3,
   QrCode, Clock, Printer, CheckCheck, X, Plus, Trash2,
   Wifi, WifiOff, TableProperties, Banknote, ArrowRight,
-  CalendarDays, Download, Pencil, Users, ClipboardList,
+  CalendarDays, Download, Pencil, Users,
   Minus, Search, Building2, UserCheck, UserX, View,
   Upload, Package, Bell, AlertTriangle,
 } from "lucide-react";
@@ -102,7 +103,7 @@ function ImageUploadField({ value, onChange, label }: { value: string; onChange:
   );
 }
 
-type Tab = "orders" | "summary" | "menu" | "reports" | "tables" | "reservations" | "banners" | "reviews" | "settings" | "inventory";
+type Tab = "orders" | "menu" | "reports" | "tables" | "reservations" | "banners" | "reviews" | "settings" | "inventory" | "staff";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
@@ -131,11 +132,57 @@ function PaymentModal({ orders, pendingSiblings, onConfirm, onClose }: {
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const { data: settings } = useQuery<Record<string, string>>({ queryKey: ["settings"], queryFn: () => customFetch("/api/settings") });
+  const queryClient = useQueryClient();
+  const t = useT();
   const primary = orders[0]!;
-  const total = orders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+  const subtotal = orders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+
+  // Tip / service charge defaults from restaurant settings
+  const defaultTipPct = parseFloat(settings?.tip_percent ?? "0") || 0;
+  const defaultServicePct = parseFloat(settings?.service_charge_percent ?? "0") || 0;
+
+  const [tipPct, setTipPct] = useState<number>(defaultTipPct);
+  const [serviceChargeEnabled, setServiceChargeEnabled] = useState<boolean>(defaultServicePct > 0);
+  const [splitCount, setSplitCount] = useState<number>(1);
+
+  // Sync defaults when settings load
+  useEffect(() => {
+    setTipPct(defaultTipPct);
+    setServiceChargeEnabled(defaultServicePct > 0);
+  }, [defaultTipPct, defaultServicePct]);
+
+  const tipAmount = Math.round(subtotal * (tipPct / 100));
+  const serviceCharge = serviceChargeEnabled ? Math.round(subtotal * (defaultServicePct / 100)) : 0;
+  const total = subtotal + tipAmount + serviceCharge;
+  const perPerson = splitCount > 1 ? Math.ceil(total / splitCount) : total;
+
   const [cash, setCash] = useState("");
   const cashNum = parseFloat(cash) || 0;
   const change = cashNum - total;
+
+  // Persist billing adjustments to backend before payment confirmation
+  const saveBilling = async () => {
+    // Split total proportionally across orders so each row records its share
+    const ratios = orders.map(o => Number(o.totalAmount) / (subtotal || 1));
+    await Promise.all(orders.map((o, i) => {
+      const r = ratios[i]!;
+      return customFetch(`/api/orders/${o.id}/billing`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          tipAmount: Math.round(tipAmount * r),
+          serviceChargeAmount: Math.round(serviceCharge * r),
+          splitCount,
+        }),
+      });
+    }));
+    queryClient.invalidateQueries({ queryKey: getGetOrdersQueryKey() });
+  };
+
+  const handleConfirm = async () => {
+    try { await saveBilling(); } catch { /* non-blocking */ }
+    onConfirm();
+  };
 
   const quickAmounts = [
     Math.ceil(total / 1000) * 1000,
@@ -149,7 +196,7 @@ function PaymentModal({ orders, pendingSiblings, onConfirm, onClose }: {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
-            <h2 className="font-bold text-lg">Төлбөр авах · {primary.tableName}</h2>
+            <h2 className="font-bold text-lg">{t("payment")} · {primary.tableName}</h2>
             <p className="text-sm text-muted-foreground">
               {orders.length > 1
                 ? `${orders.length} захиалга: ${orders.map(o => `#${o.id}`).join(", ")}`
@@ -201,10 +248,74 @@ function PaymentModal({ orders, pendingSiblings, onConfirm, onClose }: {
           ))}
         </div>
 
+        {/* Tip / service charge / split */}
+        <div className="px-6 py-4 border-b border-border space-y-3">
+          <div>
+            <label className="text-xs text-muted-foreground flex items-center justify-between mb-1">
+              <span>{t("tip")} (%)</span>
+              <span className="font-mono">₮{tipAmount.toLocaleString()}</span>
+            </label>
+            <div className="flex gap-2">
+              {[0, 5, 10, 15, 20].map(p => (
+                <button key={p} onClick={() => setTipPct(p)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                    tipPct === p ? "bg-primary/20 border-primary text-primary" : "bg-muted/30 border-border text-muted-foreground hover:border-primary/40"
+                  }`}>{p}%</button>
+              ))}
+            </div>
+          </div>
+          {defaultServicePct > 0 && (
+            <label className="flex items-center justify-between cursor-pointer text-sm">
+              <span className="text-muted-foreground">{t("service_charge")} ({defaultServicePct}%)</span>
+              <span className="flex items-center gap-2">
+                <span className="font-mono text-xs">₮{serviceCharge.toLocaleString()}</span>
+                <input type="checkbox" checked={serviceChargeEnabled}
+                  onChange={e => setServiceChargeEnabled(e.target.checked)}
+                  className="w-4 h-4 accent-primary" />
+              </span>
+            </label>
+          )}
+          <div>
+            <label className="text-xs text-muted-foreground flex items-center justify-between mb-1">
+              <span>{t("split_bill")}</span>
+              <span className="font-mono">{splitCount > 1 ? `₮${perPerson.toLocaleString()} / ${t("per_person")}` : "—"}</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setSplitCount(Math.max(1, splitCount - 1))}
+                className="w-8 h-8 rounded-lg bg-muted/50 hover:bg-muted flex items-center justify-center">
+                <Minus size={14} />
+              </button>
+              <input type="number" min="1" max="20" value={splitCount}
+                onChange={e => setSplitCount(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-center" />
+              <button onClick={() => setSplitCount(Math.min(20, splitCount + 1))}
+                className="w-8 h-8 rounded-lg bg-muted/50 hover:bg-muted flex items-center justify-center">
+                <Plus size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Total */}
-        <div className="px-6 py-4 border-b border-border">
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Нийт дүн</span>
+        <div className="px-6 py-4 border-b border-border space-y-1.5">
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>{t("subtotal")}</span>
+            <span>₮{subtotal.toLocaleString()}</span>
+          </div>
+          {tipAmount > 0 && (
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>{t("tip")} ({tipPct}%)</span>
+              <span>+₮{tipAmount.toLocaleString()}</span>
+            </div>
+          )}
+          {serviceCharge > 0 && (
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>{t("service_charge")} ({defaultServicePct}%)</span>
+              <span>+₮{serviceCharge.toLocaleString()}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between pt-2 border-t border-border">
+            <span className="font-medium">{t("total")}</span>
             <span className="text-2xl font-bold text-primary">₮{total.toLocaleString()}</span>
           </div>
         </div>
@@ -213,7 +324,7 @@ function PaymentModal({ orders, pendingSiblings, onConfirm, onClose }: {
         <div className="px-6 py-4 space-y-4">
           <div>
             <label className="text-sm text-muted-foreground mb-2 block flex items-center gap-2">
-              <Banknote size={14} /> Авсан мөнгөн дүн
+              <Banknote size={14} /> {t("amount_received")}
             </label>
             <input
               type="number"
@@ -247,7 +358,7 @@ function PaymentModal({ orders, pendingSiblings, onConfirm, onClose }: {
                 ? "bg-green-500/10 border-green-500/30 text-green-400"
                 : "bg-red-500/10 border-red-500/30 text-red-400"
             }`}>
-              <span className="font-medium">{change >= 0 ? "Хариулах мөнгө" : "Дутуу мөнгө"}</span>
+              <span className="font-medium">{change >= 0 ? t("change") : t("short")}</span>
               <span className="text-xl font-bold">₮{Math.abs(change).toLocaleString()}</span>
             </div>
           )}
@@ -255,14 +366,14 @@ function PaymentModal({ orders, pendingSiblings, onConfirm, onClose }: {
 
         {/* Action buttons */}
         <div className="px-6 pb-6 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Буцах</Button>
+          <Button variant="outline" className="flex-1" onClick={onClose}>{t("cancel")}</Button>
           <Button
             className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold"
             disabled={cashNum < total}
-            onClick={onConfirm}
+            onClick={handleConfirm}
           >
             <CheckCheck size={16} className="mr-2" />
-            Төлбөр баталгаажуулах
+            {t("confirm")}
           </Button>
         </div>
       </div>
@@ -271,6 +382,7 @@ function PaymentModal({ orders, pendingSiblings, onConfirm, onClose }: {
 }
 
 function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => void }) {
+  const t = useT();
   const pm = (order as any).paymentMethod as "cash" | "bank" | undefined;
   const total = Number(order.totalAmount);
   const subtotal = order.items.reduce(
@@ -286,7 +398,7 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
       <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
-            <h2 className="font-bold text-lg">Захиалгын түүх</h2>
+            <h2 className="font-bold text-lg">{t("order_history")}</h2>
             <p className="text-sm text-muted-foreground">
               Захиалга #{order.id} · {order.tableName}
             </p>
@@ -317,11 +429,11 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
 
         <div className="px-6 py-4 space-y-2 border-b border-border text-sm">
           <div className="flex items-center justify-between text-muted-foreground">
-            <span>Дэд дүн</span>
+            <span>{t("subtotal")}</span>
             <span>₮{subtotal.toLocaleString()}</span>
           </div>
           <div className="flex items-center justify-between pt-2 border-t border-border">
-            <span className="font-medium">Нийт дүн</span>
+            <span className="font-medium">{t("total")}</span>
             <span className="text-xl font-bold text-primary">
               ₮{total.toLocaleString()}
             </span>
@@ -330,27 +442,27 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
 
         <div className="px-6 py-4 space-y-3 text-sm">
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Төлбөрийн төрөл</span>
+            <span className="text-muted-foreground">{t("payment_method")}</span>
             {pm === "bank" ? (
               <span className="px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-bold flex items-center gap-1">
-                <Banknote size={12} /> Банк
+                <Banknote size={12} /> {t("bank")}
               </span>
             ) : (
               <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1">
-                <Banknote size={12} /> Бэлэн
+                <Banknote size={12} /> {t("cash")}
               </span>
             )}
           </div>
           <div className="flex items-center justify-between text-muted-foreground">
             <span className="flex items-center gap-1">
-              <Clock size={12} /> Үүссэн
+              <Clock size={12} /> {t("created")}
             </span>
             <span>{format(createdAt, "yyyy-MM-dd HH:mm")}</span>
           </div>
           {paidAt && (
             <div className="flex items-center justify-between text-muted-foreground">
               <span className="flex items-center gap-1">
-                <CheckCheck size={12} /> Төлсөн
+                <CheckCheck size={12} /> {t("paid_at")}
               </span>
               <span>{format(paidAt, "yyyy-MM-dd HH:mm")}</span>
             </div>
@@ -359,7 +471,7 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
 
         <div className="px-6 pb-6">
           <Button variant="outline" className="w-full" onClick={onClose}>
-            Хаах
+            {t("close")}
           </Button>
         </div>
       </div>
@@ -372,6 +484,7 @@ export default function StaffDashboard() {
   const [, setLocation] = useLocation();
   const { connected } = useStaffRealtime();
   const [activeTab, setActiveTab] = useState<Tab>("orders");
+  const t = useT();
 
   if (!token || !user) {
     setLocation("/staff/login");
@@ -379,16 +492,16 @@ export default function StaffDashboard() {
   }
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode; roles: string[] }[] = [
-    { id: "orders", label: "Захиалгууд", icon: <ShoppingBag size={16} />, roles: ["manager", "cashier", "waiter", "chef"] },
-    { id: "summary", label: "Нэгтгэл", icon: <ClipboardList size={16} />, roles: ["manager", "cashier"] },
-    { id: "menu", label: "Цэс", icon: <Utensils size={16} />, roles: ["manager"] },
-    { id: "reports", label: "Тайлан", icon: <BarChart3 size={16} />, roles: ["manager"] },
-    { id: "inventory", label: "Бараа", icon: <Package size={16} />, roles: ["manager", "cashier"] },
-    { id: "tables", label: "Ширээ", icon: <TableProperties size={16} />, roles: ["manager"] },
-    { id: "reservations", label: "Захиалга", icon: <CalendarPlus size={16} />, roles: ["manager", "waiter"] },
-    { id: "banners", label: "Зар", icon: <Image size={16} />, roles: ["manager"] },
-    { id: "reviews", label: "Сэтгэгдэл", icon: <MessageSquare size={16} />, roles: ["manager"] },
-    { id: "settings", label: "Тохиргоо", icon: <Settings size={16} />, roles: ["manager"] },
+    { id: "orders", label: t("tab_orders"), icon: <ShoppingBag size={16} />, roles: ["manager", "cashier", "chef"] },
+    { id: "menu", label: t("tab_menu"), icon: <Utensils size={16} />, roles: ["manager"] },
+    { id: "reports", label: t("tab_reports"), icon: <BarChart3 size={16} />, roles: ["manager", "cashier"] },
+    { id: "inventory", label: t("tab_inventory"), icon: <Package size={16} />, roles: ["manager", "cashier"] },
+    { id: "tables", label: t("tab_tables"), icon: <TableProperties size={16} />, roles: ["manager"] },
+    { id: "reservations", label: t("tab_reservations"), icon: <CalendarPlus size={16} />, roles: ["manager", "cashier"] },
+    { id: "banners", label: t("tab_banners"), icon: <Image size={16} />, roles: ["manager"] },
+    { id: "reviews", label: t("tab_reviews"), icon: <MessageSquare size={16} />, roles: ["manager"] },
+    { id: "staff", label: "Ажилтан", icon: <Users size={16} />, roles: ["manager", "cashier", "chef"] },
+    { id: "settings", label: t("tab_settings"), icon: <Settings size={16} />, roles: ["manager"] },
   ];
 
   const visibleTabs = tabs.filter((t) => t.roles.includes(user.role));
@@ -402,7 +515,7 @@ export default function StaffDashboard() {
               <ChefHat size={16} className="text-primary" />
             </div>
             <div>
-              <p className="font-bold text-sm leading-tight">Рестораны Систем</p>
+              <p className="font-bold text-sm leading-tight">{t("system_title")}</p>
               <p className="text-xs text-muted-foreground">
                 {user.name} · <span className="text-primary capitalize">{user.role}</span>
               </p>
@@ -411,12 +524,10 @@ export default function StaffDashboard() {
           <div className="flex items-center gap-3">
             <div className={`flex items-center gap-1.5 text-xs ${connected ? "text-green-400" : "text-muted-foreground"}`}>
               {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
-              <span className="hidden sm:inline">{connected ? "Бодит цаг" : "Офлайн"}</span>
+              <span className="hidden sm:inline">{connected ? t("realtime") : t("offline")}</span>
             </div>
             <NotificationBell />
-            <Button variant="ghost" size="sm" onClick={() => { logout(); setLocation("/staff/login"); }}>
-              <LogOut size={16} />
-            </Button>
+            <LogoutButton role={user.role} onLoggedOut={() => { logout(); setLocation("/staff/login"); }} />
           </div>
         </div>
         <div className="max-w-7xl mx-auto px-4 flex gap-0.5 overflow-x-auto pb-0 scrollbar-hide">
@@ -438,7 +549,6 @@ export default function StaffDashboard() {
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
         {activeTab === "orders" && <OrdersView role={user.role} />}
-        {activeTab === "summary" && <SummaryView />}
         {activeTab === "menu" && <MenuManagement />}
         {activeTab === "reports" && <ReportsView />}
         {activeTab === "inventory" && <InventoryView />}
@@ -446,15 +556,406 @@ export default function StaffDashboard() {
         {activeTab === "reservations" && <ReservationsManagement />}
         {activeTab === "banners" && <BannersManagement />}
         {activeTab === "reviews" && <ReviewsManagement />}
+        {activeTab === "staff" && <StaffAndShiftsView role={user.role} meId={user.id} />}
         {activeTab === "settings" && <SettingsManagement />}
       </main>
     </div>
   );
 }
 
+/* ─── Shifts / Clock-in ─── */
+
+type ShiftRow = {
+  id: number;
+  userId: number;
+  clockInAt: string;
+  clockOutAt: string | null;
+  note: string | null;
+  userName?: string;
+  userRole?: string;
+};
+
+function formatShiftDuration(start: string, end: string | null): string {
+  const s = new Date(start).getTime();
+  const e = end ? new Date(end).getTime() : Date.now();
+  const mins = Math.max(0, Math.round((e - s) / 60000));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${h} цаг ${m} мин`;
+}
+
+function MyShiftPanel() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const t = useT();
+  const { data: me } = useQuery<{ openShift: ShiftRow | null; recent: ShiftRow[] }>({
+    queryKey: ["shifts-me"],
+    queryFn: () => customFetch("/api/shifts/me"),
+    refetchInterval: 30000,
+  });
+
+  const clockIn = useMutation({
+    mutationFn: () => customFetch("/api/shifts/clock-in", { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shifts-me"] });
+      toast({ title: "Ээлжинд орлоо" });
+    },
+    onError: (err: any) => toast({ title: "Алдаа", description: err?.message || "", variant: "destructive" }),
+  });
+
+  const openShift = me?.openShift ?? null;
+  const recent = me?.recent ?? [];
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-xl font-bold flex items-center gap-2"><Clock size={20} /> {t("tab_shifts")}</h2>
+
+      <div className="bg-card border border-border rounded-2xl p-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-sm text-muted-foreground">{t("current_status")}</p>
+            {openShift ? (
+              <p className="text-lg font-bold text-green-400">
+                {t("active")} · {formatShiftDuration(openShift.clockInAt, null)}
+              </p>
+            ) : (
+              <p className="text-lg font-bold text-muted-foreground">{t("not_clocked_in")}</p>
+            )}
+            {openShift && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {format(new Date(openShift.clockInAt), "yyyy-MM-dd HH:mm")}
+              </p>
+            )}
+          </div>
+          {!openShift && (
+            <Button onClick={() => clockIn.mutate()} disabled={clockIn.isPending}
+              className="bg-green-500 hover:bg-green-600 text-white">
+              <Clock size={14} className="mr-2" /> {t("clock_in")}
+            </Button>
+          )}
+        </div>
+        {openShift && (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Ээлж дуусгахдаа "Гарах" товч дарна уу — ээлжийг автоматаар хаана.
+          </p>
+        )}
+      </div>
+
+      <div>
+        <h3 className="font-bold mb-3">{t("my_recent_shifts")}</h3>
+        <div className="bg-card border border-border rounded-2xl divide-y divide-border">
+          {recent.length === 0 ? (
+            <div className="p-4 text-sm text-muted-foreground">{t("no_history")}</div>
+          ) : (
+            recent.map(s => (
+              <div key={s.id} className="p-4 flex items-center justify-between gap-3 text-sm">
+                <div>
+                  <p className="font-medium">{format(new Date(s.clockInAt), "yyyy-MM-dd")}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {format(new Date(s.clockInAt), "HH:mm")} —{" "}
+                    {s.clockOutAt ? format(new Date(s.clockOutAt), "HH:mm") : "идэвхтэй"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-mono text-sm">{formatShiftDuration(s.clockInAt, s.clockOutAt)}</p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Logout with auto clock-out ─── */
+
+function LogoutButton({ role, onLoggedOut }: { role: string; onLoggedOut: () => void }) {
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  const { data: me } = useQuery<{ openShift: ShiftRow | null; recent: ShiftRow[] }>({
+    queryKey: ["shifts-me"],
+    queryFn: () => customFetch("/api/shifts/me"),
+    enabled: role !== "manager",
+  });
+  const hasOpenShift = !!me?.openShift;
+  const isManager = role === "manager";
+
+  const handle = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (!isManager && hasOpenShift) {
+        if (!confirm("Ээлж дуусгаад гарах уу?")) { setBusy(false); return; }
+        try {
+          await customFetch("/api/shifts/clock-out", { method: "POST", body: JSON.stringify({}) });
+          toast({ title: "Ээлж дууслаа" });
+        } catch {
+          // Non-blocking: logout even if clock-out failed
+        }
+      }
+      onLoggedOut();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Button variant="ghost" size="sm" onClick={handle} disabled={busy}
+      title={!isManager && hasOpenShift ? "Ээлж дуусгаад гарах" : "Гарах"}>
+      {!isManager && hasOpenShift ? (
+        <><Clock size={14} className="mr-1.5 text-red-400" /><span className="hidden sm:inline text-xs">Ээлж дуусгаад гарах</span><LogOut size={14} className="sm:hidden" /></>
+      ) : (
+        <LogOut size={16} />
+      )}
+    </Button>
+  );
+}
+
+/* ─── Staff & Shifts (combined) ─── */
+
+type StaffUser = {
+  id: number;
+  username: string;
+  name: string;
+  role: "manager" | "chef" | "cashier";
+  createdAt: string;
+};
+
+const roleLabel = (r: string) =>
+  ({ manager: "Менежер", chef: "Тогооч", cashier: "Кассчин" } as Record<string, string>)[r] ?? r;
+
+function StaffAndShiftsView({ role, meId }: { role: string; meId: number }) {
+  if (role !== "manager") return <MyShiftPanel />;
+  return <ManagerStaffList meId={meId} />;
+}
+
+function ManagerStaffList({ meId }: { meId: number }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: users, isLoading } = useQuery<StaffUser[]>({
+    queryKey: ["users"],
+    queryFn: () => customFetch("/api/users"),
+  });
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<StaffUser | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const del = useMutation({
+    mutationFn: (id: number) => customFetch(`/api/users/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast({ title: "Ажилтан устгагдлаа" });
+    },
+    onError: (err: any) => toast({ title: "Алдаа", description: err?.message || "", variant: "destructive" }),
+  });
+
+  if (isLoading) return <Spinner />;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="text-xl font-bold flex items-center gap-2"><Users size={20} /> Ажилтан & Ээлж</h2>
+        <Button size="sm" onClick={() => setShowAdd(true)}><Plus size={16} /> Ажилтан нэмэх</Button>
+      </div>
+
+      {showAdd && <StaffForm onClose={() => setShowAdd(false)} onDone={() => { queryClient.invalidateQueries({ queryKey: ["users"] }); setShowAdd(false); toast({ title: "Ажилтан бүртгэгдлээ" }); }} />}
+      {editing && <StaffForm user={editing} onClose={() => setEditing(null)} onDone={() => { queryClient.invalidateQueries({ queryKey: ["users"] }); setEditing(null); toast({ title: "Хадгалагдлаа" }); }} />}
+
+      <div className="bg-card border border-border rounded-2xl divide-y divide-border">
+        {(users ?? []).length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">Ажилтан бүртгэгдээгүй байна</div>
+        ) : (
+          (users ?? []).map(u => {
+            const isOpen = expandedId === u.id;
+            return (
+              <div key={u.id}>
+                <div
+                  className="p-4 flex items-center justify-between gap-3 cursor-pointer hover:bg-muted/30 transition-colors"
+                  onClick={() => setExpandedId(isOpen ? null : u.id)}
+                >
+                  <div className="min-w-0 flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-transform ${isOpen ? "rotate-90 bg-primary/20 text-primary" : "bg-muted/40 text-muted-foreground"}`}>
+                      <ArrowRight size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">{u.name}
+                        {u.id === meId && <span className="ml-2 text-xs text-primary">(Та)</span>}
+                      </p>
+                      <p className="text-xs text-muted-foreground">@{u.username} · {roleLabel(u.role)}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => setEditing(u)} className="p-2 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-foreground">
+                      <Pencil size={14} />
+                    </button>
+                    {u.id !== meId && (
+                      <button onClick={() => { if (confirm(`"${u.name}"-г устгах уу?`)) del.mutate(u.id); }}
+                        className="p-2 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {isOpen && <UserShiftHistory userId={u.id} />}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UserShiftHistory({ userId }: { userId: number }) {
+  const { data: shifts, isLoading } = useQuery<ShiftRow[]>({
+    queryKey: ["shifts-by-user", userId],
+    queryFn: () => customFetch(`/api/shifts?userId=${userId}`),
+  });
+
+  if (isLoading) return <div className="px-4 pb-4"><Spinner /></div>;
+
+  const rows = shifts ?? [];
+  const totalMins = rows.reduce((sum, s) => {
+    const startT = new Date(s.clockInAt).getTime();
+    const endT = s.clockOutAt ? new Date(s.clockOutAt).getTime() : Date.now();
+    return sum + Math.max(0, Math.round((endT - startT) / 60000));
+  }, 0);
+  const totalH = Math.floor(totalMins / 60);
+  const totalM = totalMins % 60;
+
+  // Group by date (yyyy-mm-dd)
+  const byDay = new Map<string, ShiftRow[]>();
+  for (const s of rows) {
+    const d = format(new Date(s.clockInAt), "yyyy-MM-dd");
+    const arr = byDay.get(d) ?? [];
+    arr.push(s);
+    byDay.set(d, arr);
+  }
+  const days = [...byDay.entries()];
+
+  return (
+    <div className="bg-background/50 border-t border-border px-4 py-4 space-y-3">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">Нийт ажилсан өдөр: <b className="text-foreground">{days.length}</b></span>
+        <span className="text-muted-foreground">Нийт цаг: <b className="text-foreground">{totalH} ц {totalM} мин</b></span>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-3">Ээлжийн бүртгэл алга</p>
+      ) : (
+        <div className="bg-card rounded-xl border border-border divide-y divide-border max-h-80 overflow-y-auto">
+          {days.map(([day, list]) => {
+            const dayMins = list.reduce((sum, s) => {
+              const startT = new Date(s.clockInAt).getTime();
+              const endT = s.clockOutAt ? new Date(s.clockOutAt).getTime() : Date.now();
+              return sum + Math.max(0, Math.round((endT - startT) / 60000));
+            }, 0);
+            return (
+              <div key={day} className="p-3">
+                <div className="flex items-center justify-between text-xs mb-2">
+                  <span className="font-semibold text-foreground">{day}</span>
+                  <span className="font-mono text-muted-foreground">{Math.floor(dayMins / 60)} ц {dayMins % 60} мин</span>
+                </div>
+                <div className="space-y-1.5">
+                  {list.map(s => (
+                    <div key={s.id} className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span>
+                        {format(new Date(s.clockInAt), "HH:mm")} —{" "}
+                        {s.clockOutAt ? format(new Date(s.clockOutAt), "HH:mm") : <span className="text-green-400">идэвхтэй</span>}
+                      </span>
+                      <span className="font-mono">{formatShiftDuration(s.clockInAt, s.clockOutAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StaffForm({ user, onClose, onDone }: { user?: StaffUser; onClose: () => void; onDone: () => void }) {
+  const { toast } = useToast();
+  const [name, setName] = useState(user?.name ?? "");
+  const [username, setUsername] = useState(user?.username ?? "");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<StaffUser["role"]>(user?.role ?? "cashier");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (!name.trim() || (!user && !username.trim()) || (!user && !password.trim())) {
+      toast({ title: "Бүх талбарыг бөглөнө үү", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      if (user) {
+        const body: Record<string, unknown> = { name, role };
+        if (password) body.password = password;
+        await customFetch(`/api/users/${user.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      } else {
+        await customFetch("/api/users", { method: "POST", body: JSON.stringify({ name, username, password, role }) });
+      }
+      onDone();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || "Алдаа гарлаа";
+      toast({ title: "Алдаа", description: msg, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 className="font-bold text-lg">{user ? "Ажилтан засах" : "Ажилтан нэмэх"}</h2>
+          <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted/50">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="px-6 py-4 space-y-3">
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">Нэр</label>
+            <input value={name} onChange={e => setName(e.target.value)}
+              className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+          {!user && (
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Нэвтрэх нэр</label>
+              <input value={username} onChange={e => setUsername(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+            </div>
+          )}
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">{user ? "Шинэ нууц үг (заавал биш)" : "Нууц үг"}</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">Үүрэг</label>
+            <select value={role} onChange={e => setRole(e.target.value as StaffUser["role"])}
+              className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary">
+              <option value="chef">Тогооч</option>
+              <option value="cashier">Кассчин</option>
+              <option value="manager">Менежер</option>
+            </select>
+          </div>
+        </div>
+        <div className="px-6 pb-6 flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={onClose}>Буцах</Button>
+          <Button className="flex-1" onClick={submit} disabled={saving}>{saving ? "Хадгалж байна..." : "Хадгалах"}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrdersView({ role }: { role: string }) {
+  const t = useT();
   const isChef = role === "chef";
-  const isWaiter = role === "waiter";
   const isManager = role === "manager";
   const { data: orders, isLoading } = useGetOrders();
   const updateStatus = useUpdateOrderStatus();
@@ -465,10 +966,9 @@ function OrdersView({ role }: { role: string }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
 
-  // Chef only sees preparing orders; waiter sees pending+ready+served
+  // Chef only sees preparing orders
   const active = orders?.filter((o) => {
     if (isChef) return o.status === "preparing";
-    if (isWaiter) return ["pending", "confirmed", "ready", "served"].includes(o.status);
     return !["paid", "cancelled"].includes(o.status);
   })?.filter((o) => {
     if (!searchQuery.trim()) return true;
@@ -560,94 +1060,25 @@ function OrdersView({ role }: { role: string }) {
         </div>
 
         <div className="flex items-center gap-3 mb-2">
-          <h2 className="text-xl font-bold">Бэлдэх захиалгууд</h2>
+          <h2 className="text-xl font-bold">{t("preparing_orders")}</h2>
           <span className="bg-orange-500/10 text-orange-400 text-sm font-bold px-2.5 py-0.5 rounded-full border border-orange-500/20">{active.length}</span>
         </div>
 
         {!active.length ? (
           <div className="text-center py-20 text-muted-foreground">
             <ChefHat size={48} className="mx-auto mb-4 opacity-20" />
-            <p className="text-lg font-medium">Одоогоор бэлдэх захиалга байхгүй</p>
-            <p className="text-sm mt-1">Шинэ захиалга ирэхэд энд харагдана</p>
+            <p className="text-lg font-medium">{t("no_prep_orders")}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {active.map((order) => (
               <OrderCard key={order.id} order={order} tableGroup={tableGroupTotals.get(order.tableId)}>
                 <Button className="w-full bg-green-500 hover:bg-green-600 text-white font-bold text-base py-5"
-                  onClick={() => { handle(order.id, "ready"); toast({ title: `#${order.id} бэлэн болсон!` }); }}>
-                  <CheckCheck size={18} className="mr-2" /> Бэлэн болсон
+                  onClick={() => { handle(order.id, "ready"); toast({ title: `#${order.id} — ${t("ready")}` }); }}>
+                  <CheckCheck size={18} className="mr-2" /> {t("mark_ready")}
                 </Button>
               </OrderCard>
             ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  /* ─── Waiter View ─── */
-  if (isWaiter) {
-    const newOrders = active.filter(o => o.status === "pending" || o.status === "confirmed");
-    const readyOrders = active.filter(o => o.status === "ready");
-    const servedOrders = active.filter(o => o.status === "served");
-
-    return (
-      <div className="space-y-8">
-        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground bg-card/50 border border-border rounded-xl px-4 py-3">
-          <span className="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full text-xs font-bold">Шинэ</span>
-          <ArrowRight size={12} />
-          <span>Гал тогоонд өгнө</span>
-          <ArrowRight size={12} />
-          <span className="bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full text-xs font-bold">Бэлэн</span>
-          <ArrowRight size={12} />
-          <span>Зочинд зөөнө</span>
-        </div>
-
-        {/* New orders to send to kitchen */}
-        {newOrders.length > 0 && (
-          <div>
-            <div className="flex items-center gap-3 mb-4">
-              <h2 className="text-lg font-bold">Шинэ захиалга</h2>
-              <span className="bg-yellow-500/10 text-yellow-400 text-sm font-bold px-2 py-0.5 rounded-full border border-yellow-500/20">{newOrders.length}</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {newOrders.map((order) => (
-                <OrderCard key={order.id} order={order} tableGroup={tableGroupTotals.get(order.tableId)}>
-                  <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold"
-                    onClick={() => handleSendToKitchen(order)}>
-                    <ChefHat size={15} className="mr-2" /> Гал тогоонд өгөх
-                  </Button>
-                </OrderCard>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Ready to serve */}
-        {readyOrders.length > 0 && (
-          <div>
-            <div className="flex items-center gap-3 mb-4">
-              <h2 className="text-lg font-bold">Зөөх хоол</h2>
-              <span className="bg-green-500/10 text-green-400 text-sm font-bold px-2 py-0.5 rounded-full border border-green-500/20">{readyOrders.length}</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {readyOrders.map((order) => (
-                <OrderCard key={order.id} order={order} tableGroup={tableGroupTotals.get(order.tableId)}>
-                  <Button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold"
-                    onClick={() => { handle(order.id, "served"); toast({ title: `#${order.id} зөөгдлөө` }); }}>
-                    <ArrowRight size={15} className="mr-2" /> Зөөсөн
-                  </Button>
-                </OrderCard>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {!newOrders.length && !readyOrders.length && !servedOrders.length && (
-          <div className="text-center py-16 text-muted-foreground">
-            <ShoppingBag size={40} className="mx-auto mb-3 opacity-30" />
-            <p>Одоогоор захиалга байхгүй байна</p>
           </div>
         )}
       </div>
@@ -974,137 +1405,8 @@ function CreateOrderModal({ onClose, onDone }: { onClose: () => void; onDone: ()
   );
 }
 
-// ── Summary View (for cashier + manager) ──────────────────────────────────────
 function toLocalDatetimeValue(d: Date) {
   return format(d, "yyyy-MM-dd'T'HH:mm");
-}
-
-function SummaryView() {
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-  const [from, setFrom] = useState(toLocalDatetimeValue(startOfToday));
-  const [to, setTo] = useState(toLocalDatetimeValue(now));
-  const { data: report, isLoading, refetch } = useGetReportSummary({ from, to });
-  const { toast } = useToast();
-
-  const setRange = (type: "today" | "7d" | "30d") => {
-    const end = new Date();
-    const start = new Date(end);
-    if (type === "today") {
-      start.setHours(0, 0, 0, 0);
-    } else if (type === "7d") {
-      start.setDate(end.getDate() - 6);
-      start.setHours(0, 0, 0, 0);
-    } else {
-      start.setDate(end.getDate() - 29);
-      start.setHours(0, 0, 0, 0);
-    }
-    setFrom(toLocalDatetimeValue(start));
-    setTo(toLocalDatetimeValue(end));
-  };
-
-  const printReport = () => {
-    const paidRevenue = Number(report?.totalRevenue ?? 0);
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8" /><title>Нэгтгэл тайлан</title>
-<style>
-  @page { size: A4; margin: 15mm; }
-  body { font-family: 'Courier New', monospace; font-size: 12px; }
-  h1 { font-size: 20px; text-align: center; margin-bottom: 4px; }
-  .sub { text-align: center; color: #555; margin-bottom: 20px; font-size: 11px; }
-  .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #ccc; }
-</style></head><body>
-<h1>★ НЭГТГЭЛ ТАЙЛАН ★</h1>
-<div class="sub">${from.replace("T", " ")} — ${to.replace("T", " ")} · Хэвлэсэн: ${format(new Date(), "yyyy-MM-dd HH:mm")}</div>
-<div class="row"><span>Төлөгдсөн захиалга:</span><span><b>${report?.totalOrders ?? 0}</b></span></div>
-<div class="row"><span>Нийт орлого:</span><span><b>₮${paidRevenue.toLocaleString()}</b></span></div>
-<div class="row"><span>Дундаж захиалгын дүн:</span><span><b>₮${Number(report?.averageOrderValue ?? 0).toFixed(0)}</b></span></div>
-</body></html>`;
-    const win = window.open("", "_blank", "width=800,height=600");
-    if (!win) { toast({ title: "Pop-up хаагдсан байна" }); return; }
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); win.close(); }, 300);
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-xl font-bold">Орлогын нэгтгэл</h2>
-        <Button variant="outline" size="sm" onClick={printReport} disabled={!report}>
-          <Printer size={14} className="mr-2" /> Хэвлэх
-        </Button>
-      </div>
-
-      {/* Quick range buttons */}
-      <div className="flex gap-2 flex-wrap">
-        {[
-          { label: "Өнөөдөр", type: "today" as const },
-          { label: "Сүүлийн 7 хоног", type: "7d" as const },
-          { label: "Сүүлийн 30 хоног", type: "30d" as const },
-        ].map(({ label, type }) => (
-          <button key={type} onClick={() => setRange(type)}
-            className="px-3 py-1.5 rounded-xl text-sm font-medium border border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all">
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Datetime range inputs */}
-      <div className="flex gap-3 items-end flex-wrap">
-        <div>
-          <label className="text-xs text-muted-foreground block mb-1.5 flex items-center gap-1">
-            <CalendarDays size={12} /> Эхлэх цаг
-          </label>
-          <input
-            type="datetime-local"
-            value={from}
-            onChange={e => setFrom(e.target.value)}
-            className="bg-card border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary [color-scheme:dark]"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground block mb-1.5 flex items-center gap-1">
-            <CalendarDays size={12} /> Сүүлийн цаг
-          </label>
-          <input
-            type="datetime-local"
-            value={to}
-            onChange={e => setTo(e.target.value)}
-            className="bg-card border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary [color-scheme:dark]"
-          />
-        </div>
-        <Button size="sm" onClick={() => refetch()} disabled={isLoading}>
-          {isLoading ? "Уншиж байна..." : "Харах"}
-        </Button>
-      </div>
-
-      {/* Stats */}
-      {report && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-card border border-border rounded-2xl p-5">
-            <p className="text-muted-foreground text-sm">Төлөгдсөн захиалга</p>
-            <p className="text-3xl font-bold mt-1">{report.totalOrders}</p>
-          </div>
-          <div className="bg-card border border-primary/20 rounded-2xl p-5 shadow-lg shadow-primary/5">
-            <p className="text-muted-foreground text-sm">Нийт орлого (төлөгдсөн)</p>
-            <p className="text-3xl font-bold mt-1 text-primary">₮{Number(report.totalRevenue).toLocaleString()}</p>
-          </div>
-          <div className="bg-card border border-border rounded-2xl p-5">
-            <p className="text-muted-foreground text-sm">Дундаж захиалга</p>
-            <p className="text-3xl font-bold mt-1">₮{Number(report.averageOrderValue).toFixed(0)}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Date range label */}
-      {report && (
-        <p className="text-xs text-muted-foreground">
-          {from.replace("T", " ")} — {to.replace("T", " ")} хугацааны төлөгдсөн захиалгуудын нэгтгэл
-        </p>
-      )}
-    </div>
-  );
 }
 
 // ── Menu item add form (per category) ─────────────────────────────────────────
@@ -1717,8 +2019,14 @@ function InventoryView() {
                       <button
                         onClick={async () => {
                           if (!confirm(`"${item.name}" устгах уу?`)) return;
-                          await customFetch(`/api/inventory/${item.id}`, { method: "DELETE" });
-                          refetch();
+                          try {
+                            await customFetch(`/api/inventory/${item.id}`, { method: "DELETE" });
+                            toast({ title: "Бараа устгагдлаа" });
+                            refetch();
+                          } catch (err: any) {
+                            const msg = err?.response?.data?.message || err?.message || "Устгаж чадсангүй";
+                            toast({ title: "Алдаа", description: msg, variant: "destructive" });
+                          }
                         }}
                         className="p-2 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400"
                       >
@@ -1744,19 +2052,34 @@ function InventoryView() {
 }
 
 function InventoryForm({ item, onClose, onDone }: { item?: InventoryItem; onClose: () => void; onDone: () => void }) {
+  const { data: categories } = useGetMenuCategories();
   const [name, setName] = useState(item?.name ?? "");
   const [type, setType] = useState(item?.type ?? "");
   const [quantity, setQuantity] = useState(String(item?.quantity ?? 0));
   const [threshold, setThreshold] = useState(String(item?.threshold ?? 5));
   const [price, setPrice] = useState(String(item?.price ?? 0));
   const [imageUrl, setImageUrl] = useState(item?.imageUrl ?? "");
+  const [categoryId, setCategoryId] = useState<string>(item?.categoryId ? String(item.categoryId) : "");
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
+
+  // Flatten parent + child categories into a single ordered list for the select
+  const catOptions: { id: number; label: string }[] = [];
+  for (const c of (categories ?? []) as any[]) {
+    catOptions.push({ id: c.id, label: c.name });
+    for (const sub of (c.children ?? [])) {
+      catOptions.push({ id: sub.id, label: `  — ${sub.name}` });
+    }
+  }
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !type.trim()) {
       toast({ title: "Нэр болон төрлийг бөглөнө үү", variant: "destructive" });
+      return;
+    }
+    if (!categoryId) {
+      toast({ title: "Цэсний ангилал сонгоно уу", variant: "destructive" });
       return;
     }
     const priceNum = parseFloat(price);
@@ -1773,6 +2096,7 @@ function InventoryForm({ item, onClose, onDone }: { item?: InventoryItem; onClos
         threshold: parseInt(threshold) || 0,
         price: priceNum,
         imageUrl: imageUrl || null,
+        categoryId: parseInt(categoryId),
       };
       if (item) {
         await customFetch(`/api/inventory/${item.id}`, { method: "PATCH", body: JSON.stringify(body) });
@@ -1804,6 +2128,16 @@ function InventoryForm({ item, onClose, onDone }: { item?: InventoryItem; onClos
           <input value={type} onChange={e => setType(e.target.value)} required
             className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
         </div>
+        <div className="sm:col-span-2">
+          <label className="text-xs text-muted-foreground block mb-1">Цэсний ангилал</label>
+          <select value={categoryId} onChange={e => setCategoryId(e.target.value)} required
+            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary">
+            <option value="">— Ангилал сонгох —</option>
+            {catOptions.map(c => (
+              <option key={c.id} value={c.id}>{c.label}</option>
+            ))}
+          </select>
+        </div>
         <div>
           <label className="text-xs text-muted-foreground block mb-1">Тоо ширхэг</label>
           <input type="number" min="0" value={quantity} onChange={e => setQuantity(e.target.value)}
@@ -1818,7 +2152,6 @@ function InventoryForm({ item, onClose, onDone }: { item?: InventoryItem; onClos
           <label className="text-xs text-muted-foreground block mb-1">Үнэ (₮)</label>
           <input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} required
             className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary" />
-          <p className="text-[10px] text-muted-foreground mt-1">Энэ бараа "{`Бараа`}" ангилалд цэсэнд автоматаар нэмэгдэнэ.</p>
         </div>
       </div>
       <ImageUploadField value={imageUrl} onChange={setImageUrl} label="Зураг" />
@@ -1923,6 +2256,7 @@ function NotificationBell() {
 }
 
 function ReportsView() {
+  const t = useT();
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
   const [from, setFrom] = useState(toLocalDatetimeValue(startOfToday));
@@ -1949,7 +2283,7 @@ function ReportsView() {
   };
 
   if (isLoading && !report) return <Spinner />;
-  if (!report) return <div className="text-center py-16 text-muted-foreground">Тайлан олдсонгүй</div>;
+  if (!report) return <div className="text-center py-16 text-muted-foreground">{t("no_report")}</div>;
 
   const topItems = (report.topItems ?? []) as Array<{ name: string; quantity: number; revenue: number }>;
   const peakHours = ((report as any).peakHours ?? []).slice(0, 8).map((h: any) => ({
@@ -1960,16 +2294,16 @@ function ReportsView() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-bold">Борлуулалтын тайлан</h2>
+      <h2 className="text-xl font-bold">{t("sales_report")}</h2>
 
       {/* Date range filter */}
       <div className="space-y-3">
         <div className="flex gap-2 flex-wrap">
           {[
-            { label: "Өнөөдөр", type: "today" as const },
-            { label: "Сүүлийн 7 хоног", type: "7d" as const },
-            { label: "Сүүлийн 30 хоног", type: "30d" as const },
-            { label: "Бүгд", type: "all" as const },
+            { label: t("today"), type: "today" as const },
+            { label: t("last_7_days"), type: "7d" as const },
+            { label: t("last_30_days"), type: "30d" as const },
+            { label: t("all_time"), type: "all" as const },
           ].map(({ label, type }) => (
             <button key={type} onClick={() => setRange(type)}
               className="px-3 py-1.5 rounded-xl text-sm font-medium border border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all">
@@ -1980,47 +2314,61 @@ function ReportsView() {
         <div className="flex gap-3 items-end flex-wrap">
           <div>
             <label className="text-xs text-muted-foreground block mb-1.5 flex items-center gap-1">
-              <CalendarDays size={12} /> Эхлэх
+              <CalendarDays size={12} /> {t("from_date")}
             </label>
             <input type="datetime-local" value={from} onChange={e => setFrom(e.target.value)}
               className="bg-card border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary [color-scheme:dark]" />
           </div>
           <div>
             <label className="text-xs text-muted-foreground block mb-1.5 flex items-center gap-1">
-              <CalendarDays size={12} /> Төгсөх
+              <CalendarDays size={12} /> {t("to_date")}
             </label>
             <input type="datetime-local" value={to} onChange={e => setTo(e.target.value)}
               className="bg-card border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary [color-scheme:dark]" />
           </div>
           <Button size="sm" onClick={() => refetch()} disabled={isLoading}>
-            {isLoading ? "Уншиж байна..." : "Харах"}
+            {isLoading ? t("loading") : t("view")}
+          </Button>
+          <Button size="sm" variant="outline" onClick={async () => {
+            const token = useStore.getState().token;
+            const url = `/api/reports/export?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+            const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+            if (!res.ok) return;
+            const blob = await res.blob();
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `report_${from.slice(0, 10)}_${to.slice(0, 10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+          }}>
+            <Download size={14} className="mr-1" /> {t("export_excel")}
           </Button>
         </div>
       </div>
 
       {/* Main stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <StatCard label="Нийт захиалга" value={String(report.totalOrders)} />
-        <StatCard label="Нийт орлого" value={`₮${Number(report.totalRevenue).toLocaleString()}`} primary />
-        <StatCard label="Дундаж дүн" value={`₮${Number(report.averageOrderValue).toFixed(0)}`} />
+        <StatCard label={t("total_orders")} value={String(report.totalOrders)} />
+        <StatCard label={t("total_revenue")} value={`₮${Number(report.totalRevenue).toLocaleString()}`} primary />
+        <StatCard label={t("avg_order_value")} value={`₮${Number(report.averageOrderValue).toFixed(0)}`} />
       </div>
 
       {/* Service stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <StatCard label="Дунд. үйлчилгээ" value={`${(report as any).avgServiceMinutes ?? 0} мин`} />
-        <StatCard label="Ширээний эргэлт" value={`${(report as any).tableTurnover ?? 0}`} />
-        <StatCard label="Цуцалсан" value={`${(report as any).cancelledCount ?? 0}`} />
+        <StatCard label={t("avg_service_time")} value={`${(report as any).avgServiceMinutes ?? 0} мин`} />
+        <StatCard label={t("table_turnover")} value={`${(report as any).tableTurnover ?? 0}`} />
+        <StatCard label={t("cancelled_count")} value={`${(report as any).cancelledCount ?? 0}`} />
       </div>
 
       {/* Payment breakdown */}
       {(report as any).paymentBreakdown && (
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-card border border-border rounded-2xl p-5">
-            <p className="text-muted-foreground text-sm">Бэлэн мөнгө</p>
+            <p className="text-muted-foreground text-sm">{t("cash")}</p>
             <p className="text-2xl font-bold mt-1">₮{Number((report as any).paymentBreakdown.cash ?? 0).toLocaleString()}</p>
           </div>
           <div className="bg-card border border-border rounded-2xl p-5">
-            <p className="text-muted-foreground text-sm">Банкаар</p>
+            <p className="text-muted-foreground text-sm">{t("bank")}</p>
             <p className="text-2xl font-bold mt-1">₮{Number((report as any).paymentBreakdown.bank ?? 0).toLocaleString()}</p>
           </div>
         </div>
@@ -2030,7 +2378,7 @@ function ReportsView() {
         {/* Peak hours */}
         {peakHours.length > 0 && (
           <div className="bg-card border border-border rounded-2xl p-5">
-            <h3 className="font-bold mb-4">Ачаалалтай цагууд</h3>
+            <h3 className="font-bold mb-4">{t("peak_hours")}</h3>
             <div className="h-52">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={peakHours}>
@@ -2047,11 +2395,11 @@ function ReportsView() {
         {/* Top items — full list, sorted by quantity desc */}
         <div className="bg-card border border-border rounded-2xl p-5 md:col-span-2">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-            <h3 className="font-bold">Хамгийн их захиалагдсан хоол</h3>
-            <span className="text-xs text-muted-foreground">{topItems.length} төрөл</span>
+            <h3 className="font-bold">{t("top_items")}</h3>
+            <span className="text-xs text-muted-foreground">{topItems.length}</span>
           </div>
           {topItems.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm">Мэдээлэл алга</div>
+            <div className="text-center py-8 text-muted-foreground text-sm">{t("no_data")}</div>
           ) : (
             <>
               <div style={{ height: Math.max(240, topItems.length * 32 + 40) }}>

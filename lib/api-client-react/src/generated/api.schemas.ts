@@ -24,7 +24,6 @@ export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
 export const UserRole = {
   manager: "manager",
-  waiter: "waiter",
   chef: "chef",
   cashier: "cashier",
 } as const;

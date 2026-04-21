@@ -1,7 +1,22 @@
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
+import { sql } from "drizzle-orm";
+import { db } from "@workspace/db";
 import app from "./app";
 import { logger } from "./lib/logger";
+
+// One-time cleanup: drop any legacy waiter users left over from old seeds.
+// Cast to text so this works whether or not the 'waiter' enum value still exists.
+async function purgeLegacyWaiters(): Promise<void> {
+  try {
+    const result = await db.execute(sql`DELETE FROM users WHERE role::text = 'waiter'`);
+    const count = (result as unknown as { rowCount?: number }).rowCount ?? 0;
+    if (count > 0) logger.info({ count }, "Removed legacy waiter users");
+  } catch (err) {
+    logger.warn({ err }, "Legacy waiter cleanup skipped");
+  }
+}
+void purgeLegacyWaiters();
 
 const rawPort = process.env["PORT"];
 

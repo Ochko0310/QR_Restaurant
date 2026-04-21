@@ -1,26 +1,10 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { inventoryItemsTable, menuItemsTable, menuCategoriesTable } from "@workspace/db";
-import { eq, desc, asc } from "drizzle-orm";
+import { inventoryItemsTable, menuItemsTable, orderItemsTable } from "@workspace/db";
+import { eq, desc, asc, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth";
 
 const router = Router();
-
-// Name of the auto-created category that holds inventory-backed menu items
-const DEFAULT_INVENTORY_CATEGORY = "Бараа";
-
-async function ensureInventoryCategory(): Promise<number> {
-  const [existing] = await db
-    .select()
-    .from(menuCategoriesTable)
-    .where(eq(menuCategoriesTable.name, DEFAULT_INVENTORY_CATEGORY));
-  if (existing) return existing.id;
-  const [created] = await db
-    .insert(menuCategoriesTable)
-    .values({ name: DEFAULT_INVENTORY_CATEGORY, sortOrder: 99 })
-    .returning();
-  return created.id;
-}
 
 type InventoryRow = typeof inventoryItemsTable.$inferSelect;
 type InventoryWithMenu = InventoryRow & { price: number; categoryId: number | null; menuItemId: number | null };
@@ -72,15 +56,17 @@ router.post("/inventory", requireAuth, requireRole("manager", "cashier"), async 
       res.status(400).json({ error: "validation_error", message: "Үнэ 0-ээс бага байж болохгүй" });
       return;
     }
+    if (categoryId == null || !Number.isInteger(categoryId)) {
+      res.status(400).json({ error: "validation_error", message: "Цэсний ангилал сонгоно уу" });
+      return;
+    }
 
     const [item] = await db.insert(inventoryItemsTable).values({
       name, type, quantity, threshold: threshold ?? 5, imageUrl: imageUrl ?? null,
     }).returning();
 
-    // Auto-create a linked menu item so customers can order it
-    const targetCategoryId = categoryId ?? (await ensureInventoryCategory());
     await db.insert(menuItemsTable).values({
-      categoryId: targetCategoryId,
+      categoryId,
       name,
       description: type,
       price: String(price),
@@ -154,8 +140,36 @@ router.patch("/inventory/:id", requireAuth, requireRole("manager", "cashier"), a
 router.delete("/inventory/:id", requireAuth, requireRole("manager", "cashier"), async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    // Delete linked menu items first (they have FK-like reference)
-    await db.delete(menuItemsTable).where(eq(menuItemsTable.inventoryItemId, id));
+
+    // Find linked menu items
+    const linkedMenuItems = await db
+      .select({ id: menuItemsTable.id })
+      .from(menuItemsTable)
+      .where(eq(menuItemsTable.inventoryItemId, id));
+    const menuIds = linkedMenuItems.map((m) => m.id);
+
+    if (menuIds.length > 0) {
+      // Check which menu items have been ordered (can't hard-delete due to FK)
+      const orderRefs = await db
+        .select({ menuItemId: orderItemsTable.menuItemId })
+        .from(orderItemsTable)
+        .where(inArray(orderItemsTable.menuItemId, menuIds));
+      const orderedIds = new Set(orderRefs.map((o) => o.menuItemId));
+      const safeToDelete = menuIds.filter((m) => !orderedIds.has(m));
+      const mustSoftDelete = menuIds.filter((m) => orderedIds.has(m));
+
+      if (safeToDelete.length > 0) {
+        await db.delete(menuItemsTable).where(inArray(menuItemsTable.id, safeToDelete));
+      }
+      if (mustSoftDelete.length > 0) {
+        // Menu item is in order history — mark unavailable and sever inventory link
+        await db
+          .update(menuItemsTable)
+          .set({ available: false, inventoryItemId: null })
+          .where(inArray(menuItemsTable.id, mustSoftDelete));
+      }
+    }
+
     await db.delete(inventoryItemsTable).where(eq(inventoryItemsTable.id, id));
     res.status(204).send();
   } catch (err) {

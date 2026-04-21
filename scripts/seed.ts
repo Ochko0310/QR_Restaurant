@@ -22,7 +22,6 @@ async function seed() {
     const saltRounds = 10;
     const users = [
       { username: "manager", password: "manager123", name: "Менежер Болд", role: "manager" },
-      { username: "waiter", password: "waiter123", name: "Цайчин Оюун", role: "waiter" },
       { username: "chef", password: "chef123", name: "Тогооч Батаа", role: "chef" },
       { username: "cashier", password: "cashier123", name: "Кассир Сарнай", role: "cashier" },
     ];

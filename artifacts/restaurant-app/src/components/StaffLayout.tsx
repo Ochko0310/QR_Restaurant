@@ -1,9 +1,9 @@
 import { Link, useLocation } from "wouter";
 import { useStore } from "@/hooks/use-store";
 import { useStaffRealtime } from "@/hooks/use-realtime";
-import { 
-  LogOut, UtensilsCrossed, ChefHat, Receipt, 
-  ListOrdered, Table as TableIcon, BarChart3, Wifi, WifiOff 
+import {
+  LogOut, UtensilsCrossed, ChefHat, Receipt,
+  Table as TableIcon, BarChart3, Wifi, WifiOff
 } from "lucide-react";
 
 export function StaffLayout({ children }: { children: React.ReactNode }) {
@@ -21,12 +21,6 @@ export function StaffLayout({ children }: { children: React.ReactNode }) {
     links.push({ href: "/staff/reports", label: "Reports", icon: BarChart3 });
     links.push({ href: "/staff/menu", label: "Menu Catalog", icon: UtensilsCrossed });
     links.push({ href: "/staff/tables", label: "Tables & QR", icon: TableIcon });
-  }
-  if (user?.role === 'waiter' || user?.role === 'manager') {
-    links.push({ href: "/staff/waiter", label: "Waiter Orders", icon: ListOrdered });
-    if (user?.role === 'waiter') {
-      links.push({ href: "/staff/tables", label: "Tables", icon: TableIcon });
-    }
   }
   if (user?.role === 'chef' || user?.role === 'manager') {
     links.push({ href: "/staff/chef", label: "Kitchen Board", icon: ChefHat });

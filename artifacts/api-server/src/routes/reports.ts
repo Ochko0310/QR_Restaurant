@@ -6,6 +6,12 @@ import { requireAuth, requireRole } from "../lib/auth";
 
 const router = Router();
 
+function csvEscape(v: unknown): string {
+  const s = v == null ? "" : String(v);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
 router.get("/reports/summary", requireAuth, requireRole("manager", "cashier"), async (req, res) => {
   try {
     const { from, to } = req.query as { from?: string; to?: string };
@@ -117,6 +123,66 @@ router.get("/reports/summary", requireAuth, requireRole("manager", "cashier"), a
       ordersByStatus,
       topItems,
     });
+  } catch (err) {
+    res.status(500).json({ error: "server_error", message: String(err) });
+  }
+});
+
+// Export paid orders as CSV (Excel opens natively)
+router.get("/reports/export", requireAuth, requireRole("manager", "cashier"), async (req, res) => {
+  try {
+    const { from, to } = req.query as { from?: string; to?: string };
+    const conditions = [sql`${ordersTable.status} = 'paid'`];
+    if (from) conditions.push(gte(ordersTable.createdAt, new Date(from)));
+    if (to) conditions.push(lte(ordersTable.createdAt, new Date(to)));
+
+    const orders = await db.select().from(ordersTable).where(and(...conditions)).orderBy(ordersTable.createdAt);
+    const tableIds = [...new Set(orders.map((o) => o.tableId))];
+    const tables = tableIds.length > 0
+      ? await db.select().from(tablesTable).where(inArray(tablesTable.id, tableIds))
+      : [];
+    const tableMap = new Map(tables.map((t) => [t.id, t]));
+
+    const orderIds = orders.map((o) => o.id);
+    const items = orderIds.length > 0
+      ? await db.select().from(orderItemsTable).where(inArray(orderItemsTable.orderId, orderIds))
+      : [];
+    const itemsByOrder = new Map<number, typeof items>();
+    for (const item of items) {
+      const arr = itemsByOrder.get(item.orderId) ?? [];
+      arr.push(item);
+      itemsByOrder.set(item.orderId, arr);
+    }
+
+    const header = [
+      "Захиалга ID", "Огноо", "Ширээ", "Төлбөр", "Нийт дүн",
+      "Хөнгөлөлт", "Цэвэр орлого", "Хоолнууд",
+    ];
+    const lines = [header.map(csvEscape).join(",")];
+    for (const o of orders) {
+      const total = Number(o.totalAmount);
+      const discount = Number(o.discount);
+      const net = total - discount;
+      const itemsStr = (itemsByOrder.get(o.id) ?? [])
+        .map((i) => `${i.menuItemName} x${i.quantity}`)
+        .join("; ");
+      lines.push([
+        o.id,
+        new Date(o.createdAt).toISOString(),
+        tableMap.get(o.tableId)?.name ?? "",
+        o.paymentMethod ?? "cash",
+        total,
+        discount,
+        net,
+        itemsStr,
+      ].map(csvEscape).join(","));
+    }
+
+    // UTF-8 BOM so Excel displays Mongolian correctly
+    const body = "\uFEFF" + lines.join("\r\n");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="report_${(from ?? "all").slice(0, 10)}_${(to ?? "all").slice(0, 10)}.csv"`);
+    res.send(body);
   } catch (err) {
     res.status(500).json({ error: "server_error", message: String(err) });
   }

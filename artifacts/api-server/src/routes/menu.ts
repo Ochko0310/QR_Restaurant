@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { menuCategoriesTable, menuItemsTable } from "@workspace/db";
-import { eq, asc } from "drizzle-orm";
+import { menuCategoriesTable, menuItemsTable, inventoryItemsTable, orderItemsTable } from "@workspace/db";
+import { eq, asc, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth";
 
 const router = Router();
@@ -135,6 +135,15 @@ router.patch("/menu/items/:itemId", requireAuth, requireRole("manager"), async (
       res.status(404).json({ error: "not_found" });
       return;
     }
+
+    // Back-sync name/image to linked inventory so the two views stay consistent
+    if (item.inventoryItemId && (updates.name !== undefined || updates.imageUrl !== undefined)) {
+      const invUpdate: Record<string, unknown> = { updatedAt: new Date() };
+      if (updates.name !== undefined) invUpdate.name = updates.name;
+      if (updates.imageUrl !== undefined) invUpdate.imageUrl = updates.imageUrl;
+      await db.update(inventoryItemsTable).set(invUpdate).where(eq(inventoryItemsTable.id, item.inventoryItemId));
+    }
+
     res.json(item);
   } catch (err) {
     res.status(500).json({ error: "server_error", message: String(err) });
@@ -144,8 +153,18 @@ router.patch("/menu/items/:itemId", requireAuth, requireRole("manager"), async (
 router.delete("/menu/items/:itemId", requireAuth, requireRole("manager"), async (req, res) => {
   try {
     const itemId = parseInt(req.params.itemId as string);
-    await db.delete(menuItemsTable).where(eq(menuItemsTable.id, itemId));
-    res.status(204).send();
+
+    // Detach from any historical order_items (menuItemName snapshot preserves the info).
+    // If the column is still NOT NULL in the DB (pre-migration), this raw SQL will fail;
+    // fall back to soft-disable so the user always gets a sensible result.
+    try {
+      await db.execute(sql`UPDATE order_items SET menu_item_id = NULL WHERE menu_item_id = ${itemId}`);
+      await db.delete(menuItemsTable).where(eq(menuItemsTable.id, itemId));
+      res.status(204).send();
+    } catch {
+      await db.update(menuItemsTable).set({ available: false }).where(eq(menuItemsTable.id, itemId));
+      res.status(204).send();
+    }
   } catch (err) {
     res.status(500).json({ error: "server_error", message: String(err) });
   }

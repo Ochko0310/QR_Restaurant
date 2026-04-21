@@ -74,7 +74,7 @@ router.get("/reservations", requireAuth, async (req, res) => {
 });
 
 // Staff: update reservation status / assign table
-router.patch("/reservations/:id", requireAuth, requireRole("manager", "waiter"), async (req, res) => {
+router.patch("/reservations/:id", requireAuth, requireRole("manager", "cashier"), async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
     const updates = req.body as { status?: string; tableId?: number; notes?: string };

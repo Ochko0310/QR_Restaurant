@@ -35,6 +35,9 @@ async function getOrderWithItems(orderId: number) {
     tableName: table?.name ?? "",
     totalAmount: Number(order.totalAmount),
     discount: Number(order.discount),
+    tipAmount: Number(order.tipAmount ?? 0),
+    serviceChargeAmount: Number(order.serviceChargeAmount ?? 0),
+    splitCount: order.splitCount ?? 1,
     paymentMethod: order.paymentMethod ?? "cash",
     items: items.map((i) => ({
       ...i,
@@ -75,6 +78,9 @@ router.get("/orders", requireAuth, async (req, res) => {
       tableName: tableMap.get(order.tableId)?.name ?? "",
       totalAmount: Number(order.totalAmount),
       discount: Number(order.discount),
+      tipAmount: Number(order.tipAmount ?? 0),
+      serviceChargeAmount: Number(order.serviceChargeAmount ?? 0),
+      splitCount: order.splitCount ?? 1,
       paymentMethod: order.paymentMethod ?? "cash",
       items: allItems
         .filter((i) => i.orderId === order.id)
@@ -258,6 +264,14 @@ router.post("/orders", async (req, res) => {
         .set({ quantity: newQty, updatedAt: new Date() })
         .where(eq(inventoryItemsTable.id, invId));
 
+      // Sync availability to linked menu items: out-of-stock = unavailable
+      if (newQty === 0) {
+        await db
+          .update(menuItemsTable)
+          .set({ available: false })
+          .where(eq(menuItemsTable.inventoryItemId, invId));
+      }
+
       // Fire a notification only when the stock crosses below threshold,
       // or drops to zero — so we don't spam one notification per order
       // while the stock is already low.
@@ -359,6 +373,31 @@ router.patch("/orders/:orderId/status", requireAuth, async (req, res) => {
       return;
     }
 
+    // On cancellation — restore inventory for any items that consumed stock
+    if (status === "cancelled" && currentOrder.status !== "cancelled") {
+      const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, orderId));
+      const menuIds = [...new Set(items.map((i) => i.menuItemId))];
+      if (menuIds.length > 0) {
+        const linked = await db.select().from(menuItemsTable).where(inArray(menuItemsTable.id, menuIds));
+        const invMap = new Map(linked.filter((m) => m.inventoryItemId).map((m) => [m.id, m.inventoryItemId!]));
+        const restore = new Map<number, number>();
+        for (const it of items) {
+          const invId = invMap.get(it.menuItemId);
+          if (invId) restore.set(invId, (restore.get(invId) ?? 0) + it.quantity);
+        }
+        for (const [invId, qty] of restore.entries()) {
+          const [prev] = await db.select().from(inventoryItemsTable).where(eq(inventoryItemsTable.id, invId));
+          if (!prev) continue;
+          const newQty = prev.quantity + qty;
+          await db.update(inventoryItemsTable).set({ quantity: newQty, updatedAt: new Date() }).where(eq(inventoryItemsTable.id, invId));
+          // Re-enable menu if it was auto-disabled on stock-out
+          if (prev.quantity === 0 && newQty > 0) {
+            await db.update(menuItemsTable).set({ available: true }).where(eq(menuItemsTable.inventoryItemId, invId));
+          }
+        }
+      }
+    }
+
     const fullOrder = await getOrderWithItems(orderId);
 
     const io: SocketIOServer = req.app.get("io");
@@ -413,6 +452,19 @@ router.delete("/orders/:orderId/items/:itemId", requireAuth, requireRole("manage
       .returning();
     if (!deleted) { res.status(404).json({ error: "not_found", message: "Хоол олдсонгүй" }); return; }
 
+    // Restore inventory if the voided menu item is linked
+    const [menu] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, deleted.menuItemId));
+    if (menu?.inventoryItemId) {
+      const [prev] = await db.select().from(inventoryItemsTable).where(eq(inventoryItemsTable.id, menu.inventoryItemId));
+      if (prev) {
+        const newQty = prev.quantity + deleted.quantity;
+        await db.update(inventoryItemsTable).set({ quantity: newQty, updatedAt: new Date() }).where(eq(inventoryItemsTable.id, menu.inventoryItemId));
+        if (prev.quantity === 0 && newQty > 0) {
+          await db.update(menuItemsTable).set({ available: true }).where(eq(menuItemsTable.inventoryItemId, menu.inventoryItemId));
+        }
+      }
+    }
+
     // Recalculate total
     const remaining = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, orderId));
     const newTotal = remaining.reduce((sum, i) => sum + Number(i.unitPrice) * i.quantity, 0);
@@ -423,6 +475,54 @@ router.delete("/orders/:orderId/items/:itemId", requireAuth, requireRole("manage
     io.to(`restaurant_1`).emit("order:updated", fullOrder);
     io.to(`session_${order.tableToken}`).emit("order:updated", fullOrder);
 
+    res.json(fullOrder);
+  } catch (err) {
+    res.status(500).json({ error: "server_error", message: String(err) });
+  }
+});
+
+// Update tip, service charge, split count before payment
+router.patch("/orders/:orderId/billing", requireAuth, requireRole("manager", "cashier"), async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.orderId as string);
+    const { tipAmount, serviceChargeAmount, splitCount } = req.body as {
+      tipAmount?: number;
+      serviceChargeAmount?: number;
+      splitCount?: number;
+    };
+
+    const [current] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
+    if (!current) { res.status(404).json({ error: "not_found" }); return; }
+    if (current.status === "paid" || current.status === "cancelled") {
+      res.status(400).json({ error: "invalid_action", message: "Дууссан захиалгыг засах боломжгүй" });
+      return;
+    }
+
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (tipAmount !== undefined) {
+      if (!Number.isFinite(tipAmount) || tipAmount < 0) {
+        res.status(400).json({ error: "validation_error", message: "Тип буруу байна" }); return;
+      }
+      updates.tipAmount = String(tipAmount);
+    }
+    if (serviceChargeAmount !== undefined) {
+      if (!Number.isFinite(serviceChargeAmount) || serviceChargeAmount < 0) {
+        res.status(400).json({ error: "validation_error", message: "Хураамж буруу байна" }); return;
+      }
+      updates.serviceChargeAmount = String(serviceChargeAmount);
+    }
+    if (splitCount !== undefined) {
+      if (!Number.isInteger(splitCount) || splitCount < 1 || splitCount > 20) {
+        res.status(400).json({ error: "validation_error", message: "Хуваах тоо 1-20 хооронд байх ёстой" }); return;
+      }
+      updates.splitCount = splitCount;
+    }
+
+    await db.update(ordersTable).set(updates).where(eq(ordersTable.id, orderId));
+    const fullOrder = await getOrderWithItems(orderId);
+    const io: SocketIOServer = req.app.get("io");
+    io.to(`restaurant_1`).emit("order:updated", fullOrder);
+    if (fullOrder) io.to(`session_${fullOrder.tableToken}`).emit("order:updated", fullOrder);
     res.json(fullOrder);
   } catch (err) {
     res.status(500).json({ error: "server_error", message: String(err) });
@@ -444,6 +544,9 @@ router.get("/orders/table/:tableToken", async (req, res) => {
       tableName: table?.name ?? "",
       totalAmount: Number(order.totalAmount),
       discount: Number(order.discount),
+      tipAmount: Number(order.tipAmount ?? 0),
+      serviceChargeAmount: Number(order.serviceChargeAmount ?? 0),
+      splitCount: order.splitCount ?? 1,
       paymentMethod: order.paymentMethod ?? "cash",
       items: allItems
         .filter((i) => i.orderId === order.id)

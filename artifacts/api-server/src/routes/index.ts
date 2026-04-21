@@ -14,6 +14,8 @@ import reservationsRouter from "./reservations";
 import customersRouter from "./customers";
 import inventoryRouter from "./inventory";
 import notificationsRouter from "./notifications";
+import shiftsRouter from "./shifts";
+import usersRouter from "./users";
 
 const router: IRouter = Router();
 
@@ -32,5 +34,7 @@ router.use(reservationsRouter);
 router.use(customersRouter);
 router.use(inventoryRouter);
 router.use(notificationsRouter);
+router.use(shiftsRouter);
+router.use(usersRouter);
 
 export default router;

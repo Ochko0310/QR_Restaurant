@@ -45,7 +45,7 @@ router.get("/tables/:tableId", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/tables/:tableId", requireAuth, requireRole("manager", "waiter"), async (req, res) => {
+router.patch("/tables/:tableId", requireAuth, requireRole("manager", "cashier"), async (req, res) => {
   try {
     const tableId = parseInt(req.params.tableId as string);
     const { name, capacity, status } = req.body as { name?: string; capacity?: number; status?: string };

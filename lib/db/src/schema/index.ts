@@ -9,3 +9,4 @@ export * from "./settings";
 export * from "./reservations";
 export * from "./inventory";
 export * from "./notifications";
+export * from "./shifts";

@@ -480,7 +480,7 @@ components:
           type: string
         role:
           type: string
-          enum: [manager, waiter, chef, cashier]
+          enum: [manager, chef, cashier]
       required: [id, username, name, role]
 
     Table:

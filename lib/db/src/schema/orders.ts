@@ -28,6 +28,9 @@ export const ordersTable = pgTable("orders", {
   totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),
   discount: numeric("discount", { precision: 10, scale: 2 }).notNull().default("0"),
   discountReason: text("discount_reason"),
+  tipAmount: numeric("tip_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  serviceChargeAmount: numeric("service_charge_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  splitCount: integer("split_count").notNull().default(1),
   notes: text("notes"),
   printedAt: timestamp("printed_at"),
   paidAt: timestamp("paid_at"),
@@ -38,7 +41,7 @@ export const ordersTable = pgTable("orders", {
 export const orderItemsTable = pgTable("order_items", {
   id: serial("id").primaryKey(),
   orderId: integer("order_id").notNull().references(() => ordersTable.id),
-  menuItemId: integer("menu_item_id").notNull().references(() => menuItemsTable.id),
+  menuItemId: integer("menu_item_id").references(() => menuItemsTable.id, { onDelete: "set null" }),
   menuItemName: text("menu_item_name").notNull(),
   quantity: integer("quantity").notNull(),
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),

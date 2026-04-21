@@ -22,6 +22,11 @@ router.post("/auth/login", async (req, res) => {
       return;
     }
 
+    if ((user.role as string) !== "manager" && (user.role as string) !== "chef" && (user.role as string) !== "cashier") {
+      res.status(403).json({ error: "forbidden", message: "Энэ эрх идэвхгүй болсон. Менежертэйгээ холбоо барина уу." });
+      return;
+    }
+
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
       res.status(401).json({ error: "unauthorized", message: "Invalid credentials" });
