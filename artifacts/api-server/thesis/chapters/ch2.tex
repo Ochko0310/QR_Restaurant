@@ -15,7 +15,7 @@
         дотор харагдана;
   \item Хэрэглэгч хоол сонгож сагсанд нэмэн ``Захиалга өгөх'' товчийг дарна;
   \item Захиалга нь WebSocket протоколоор ажилтны дэлгэцэнд бодит цаг хугацаанд дамжина;
-  \item Цайчин захиалгыг баталгаажуулахад зочны дэлгэцэнд мэдэгдэл ирнэ;
+  \item Ажилтан (кассир/менежер) захиалгыг баталгаажуулахад зочны дэлгэцэнд мэдэгдэл ирнэ;
   \item Тогооч хоол бэлтгэж ``Бэлэн боллоо'' тэмдэглэхэд зочны дэлгэцэнд мэдэгдэл ирнэ;
   \item Зочин тооцоо хийлгэхэд кассир тооцоог баталгаажуулна.
 \end{enumerate}
@@ -23,21 +23,21 @@
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[
-  step/.style={rectangle, draw, rounded corners=4pt, minimum width=3.5cm,
+  fstep/.style={rectangle, draw, rounded corners=4pt, minimum width=3.5cm,
     minimum height=0.9cm, align=center, font=\small, fill=blue!10},
   decision/.style={diamond, draw, aspect=2, minimum width=3cm,
     minimum height=0.7cm, align=center, font=\scriptsize, fill=yellow!20},
   arr/.style={-{Stealth}, thick},
   node distance=1.2cm
 ]
-\node[step] (qr) {QR код уншуулах};
-\node[step, below=of qr] (menu) {Цэс харуулах};
-\node[step, below=of menu] (order) {Захиалга үүсгэх};
-\node[step, below=of order] (ws) {WebSocket дамжуулалт};
-\node[step, below=of ws] (confirm) {Ажилтан баталгаажуулах};
-\node[step, below=of confirm] (prepare) {Гал тогоо бэлтгэх};
-\node[step, below=of prepare] (serve) {Хоол хүргэх};
-\node[step, below=of serve] (pay) {Тооцоо хийх};
+\node[fstep] (qr) {QR код уншуулах};
+\node[fstep, below=of qr] (menu) {Цэс харуулах};
+\node[fstep, below=of menu] (order) {Захиалга үүсгэх};
+\node[fstep, below=of order] (ws) {WebSocket дамжуулалт};
+\node[fstep, below=of ws] (confirm) {Ажилтан баталгаажуулах};
+\node[fstep, below=of confirm] (prepare) {Гал тогоо бэлтгэх};
+\node[fstep, below=of prepare] (serve) {Хоол хүргэх};
+\node[fstep, below=of serve] (pay) {Тооцоо хийх};
 
 \draw[arr] (qr) -- (menu);
 \draw[arr] (menu) -- (order);
@@ -83,51 +83,296 @@
 
 \section{Функционал шаардлага}
 
-\textbf{ФШ-01: QR Кодоор Цэс Нээх}\\
-Хэрэглэгч ширээн дэлгэц дээрх QR кодыг смартфоны камераар уншуулна. 3 секундын
-дотор тухайн ширээний мэдээлэл болон ресторан цэс нэн даруй нээгдэнэ. Цэс нь
-ангиллаар бүлэглэгдсэн, хоол бүрийн зураг, нэр, тайлбар, үнэ агуулсан байна.
+Функционал шаардлага нь системийн заавал хийх ёстой үйлдэл, боломжуудыг
+тодорхойлно. Шаардлага бүрийг оролт, гаралт, баталгаажуулалт, чухлын түвшнээр
+нь ангилан харуулсан болно. Чухлын түвшнийг MoSCoW аргачлалаар (M -- Must,
+S -- Should, C -- Could) үнэлсэн.
 
-\textbf{ФШ-02: Захиалга Үүсгэх}\\
-Хэрэглэгч цэснээс хоол сонгон сагсанд нэмэх, хасах боломжтой байна. Хоол бүрд
-тусгай хүсэлт бичих боломжтой байна. ``Захиалга өгөх'' товч дарахад нийт дүн болон
-захиалгын мэдээллийн баталгаажуулалтын дэлгэц харагдана.
+\begin{table}[htbp]
+\caption{ФШ-01 QR кодоор цэс нээх}
+\label{tab:fr01}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|L|}
+\hline
+\rowcolor{LightBlue}
+\textbf{Код} & ФШ-01 \\ \hline
+\textbf{Нэр} & QR кодоор цэс нээх \\ \hline
+\rowcolor{LightBlue}
+\textbf{Тайлбар} & Зочин ширээний QR кодыг уншуулсны дараа тухайн рестораны цэс болон ширээний мэдээлэл автоматаар нээгдэнэ \\ \hline
+\textbf{Оролцогч} & Зочин \\ \hline
+\rowcolor{LightBlue}
+\textbf{Оролт} & \texttt{qr\_token} (UUID) параметр агуулсан URL \\ \hline
+\textbf{Гаралт} & Цэсийн ангилал бүхий бүх идэвхтэй хоолны жагсаалт, ширээний нэр \\ \hline
+\rowcolor{LightBlue}
+\textbf{Баталгаажуулалт} & Token UUID форматтай, өгөгдлийн санд бүртгэгдсэн, ширээ идэвхтэй эсэх \\ \hline
+\textbf{Хариу хугацаа} & $\leq$ 3 секунд (сүлжээний 4G/Wi-Fi нөхцөлд) \\ \hline
+\rowcolor{LightBlue}
+\textbf{Чухал зэрэг} & M (Must have) \\ \hline
+\end{tabularx}
+\end{table}
 
-\textbf{ФШ-03: Бодит Цагийн Мэдэгдэл (Зочин)}\\
-Захиалга баталгаажсан, бэлтгэж байна, бэлэн боллоо, хүргэгдсэн зэрэг статус
-өөрчлөлт бүрийг зочны дэлгэцэнд шуурхай харуулна.
+\begin{table}[htbp]
+\caption{ФШ-02 Захиалга үүсгэх}
+\label{tab:fr02}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|L|}
+\hline
+\rowcolor{LightBlue}
+\textbf{Код} & ФШ-02 \\ \hline
+\textbf{Нэр} & Захиалга үүсгэх ба нэгтгэх \\ \hline
+\rowcolor{LightBlue}
+\textbf{Тайлбар} & Зочин сагсандаа нэмсэн хоолыг нэгтгэн захиалга илгээнэ. Нэг ширээнд 10 минутын дотор шинэ захиалга өгвөл өмнөх захиалга руу автоматаар нэгдэнэ \\ \hline
+\textbf{Оролцогч} & Зочин \\ \hline
+\rowcolor{LightBlue}
+\textbf{Оролт} & \texttt{tableId}, сагсны хоол бүрийн \texttt{menuItemId}, \texttt{quantity}, заавал бус \texttt{note} \\ \hline
+\textbf{Гаралт} & Захиалгын ID, статус \texttt{pending}, нийт дүн \\ \hline
+\rowcolor{LightBlue}
+\textbf{Баталгаажуулалт} & Хоолны нөөц байгаа эсэх, тоо $\geq 1$, үнэ сөрөг биш \\ \hline
+\textbf{Хариу хугацаа} & $\leq$ 500 мс \\ \hline
+\rowcolor{LightBlue}
+\textbf{Чухал зэрэг} & M (Must have) \\ \hline
+\end{tabularx}
+\end{table}
 
-\textbf{ФШ-04: Бодит Цагийн Мэдэгдэл (Ажилтан)}\\
-Шинэ захиалга ирэхэд ажилтны дэлгэцэнд дохиолол болон мэдэгдэл харагдана.
-Захиалга нь ширээний нэр, хоолны жагсаалт, нийт дүн агуулсан байна.
+\begin{table}[htbp]
+\caption{ФШ-03 Бодит цагийн мэдэгдэл (зочин тал)}
+\label{tab:fr03}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|L|}
+\hline
+\rowcolor{LightBlue}
+\textbf{Код} & ФШ-03 \\ \hline
+\textbf{Нэр} & Бодит цагийн мэдэгдэл (зочин) \\ \hline
+\rowcolor{LightBlue}
+\textbf{Тайлбар} & Захиалгын статус (\texttt{pending}$\to$\texttt{confirmed}$\to$\texttt{preparing}$\to$\texttt{ready}$\to$\texttt{served}$\to$\texttt{paid}) өөрчлөгдөх бүрт зочин руу Socket.IO-оор шуурхай мэдэгдэнэ \\ \hline
+\textbf{Оролцогч} & Зочин, Сервер \\ \hline
+\rowcolor{LightBlue}
+\textbf{Оролт} & \texttt{orderId}, шинэ \texttt{status} \\ \hline
+\textbf{Гаралт} & Socket.IO \texttt{order\_update} үйл явдал, toast мэдэгдэл \\ \hline
+\rowcolor{LightBlue}
+\textbf{Баталгаажуулалт} & Клиент тухайн ширээний room-д нэгдсэн байх ёстой \\ \hline
+\textbf{Хариу хугацаа} & $\leq$ 100 мс (WebSocket латенси) \\ \hline
+\rowcolor{LightBlue}
+\textbf{Чухал зэрэг} & M (Must have) \\ \hline
+\end{tabularx}
+\end{table}
 
-\textbf{ФШ-05: Захиалгын Статус Удирдлага}\\
-Захиалгын статусын шилжилт нь зөвхөн тодорхой дарааллаар явагдана:
-\[
-\texttt{pending} \to \texttt{confirmed} \to \texttt{preparing} \to
-\texttt{ready} \to \texttt{served} \to \texttt{paid}
-\]
-Статус өөрчлөлт бүр WebSocket-р зочны дэлгэцэнд шуурхай мэдэгдэнэ.
+\begin{table}[htbp]
+\caption{ФШ-04 Бодит цагийн мэдэгдэл (ажилтан тал)}
+\label{tab:fr04}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|L|}
+\hline
+\rowcolor{LightBlue}
+\textbf{Код} & ФШ-04 \\ \hline
+\textbf{Нэр} & Шинэ захиалгын мэдэгдэл (ажилтан) \\ \hline
+\rowcolor{LightBlue}
+\textbf{Тайлбар} & Шинэ захиалга үүсэхэд кассир, менежер, гал тогооны дэлгэцэнд дохио болон мэдэгдэл ирнэ. Мэдэгдэл нь ширээний нэр, хоолны жагсаалт, нийт дүнг агуулна \\ \hline
+\textbf{Оролцогч} & Кассир, Менежер, Гал тогоо \\ \hline
+\rowcolor{LightBlue}
+\textbf{Оролт} & Шинэ захиалгын өгөгдөл (server-side) \\ \hline
+\textbf{Гаралт} & Socket.IO \texttt{new\_order} үйл явдал \texttt{restaurant\_1} room-д broadcast \\ \hline
+\rowcolor{LightBlue}
+\textbf{Баталгаажуулалт} & Зөвшөөрөгдсөн дүрд (manager/cashier/kitchen) \\ \hline
+\textbf{Хариу хугацаа} & $\leq$ 100 мс \\ \hline
+\rowcolor{LightBlue}
+\textbf{Чухал зэрэг} & M (Must have) \\ \hline
+\end{tabularx}
+\end{table}
 
-\textbf{ФШ-06: Цэс Удирдлага}\\
-Менежер цэсийн ангилал болон хоолыг нэмэх, засварлах, устгах боломжтой байна.
-Хоолны байдал (байна/байхгүй) бодит цаг хугацаанд шинэчлэх боломжтой байна.
+\begin{table}[htbp]
+\caption{ФШ-05 Захиалгын статус удирдлага}
+\label{tab:fr05}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|L|}
+\hline
+\rowcolor{LightBlue}
+\textbf{Код} & ФШ-05 \\ \hline
+\textbf{Нэр} & Захиалгын статусын шилжилтийн хяналт \\ \hline
+\rowcolor{LightBlue}
+\textbf{Тайлбар} & Захиалгын статус нь зөвхөн тодорхой, урьдчилан тогтоосон дарааллаар шилжинэ. Буруу шилжилтийг серверийн талд татгалзана \\ \hline
+\textbf{Оролцогч} & Кассир, Менежер \\ \hline
+\rowcolor{LightBlue}
+\textbf{Оролт} & \texttt{orderId}, зорилт \texttt{status} \\ \hline
+\textbf{Гаралт} & Шинэчлэгдсэн захиалга, WebSocket broadcast \\ \hline
+\rowcolor{LightBlue}
+\textbf{Баталгаажуулалт} & State machine-ийн зөвшөөрөгдсөн шилжилт зэрэгцээ шалгалт \\ \hline
+\textbf{Алдаа} & Буруу шилжилт бол HTTP 400 \texttt{invalid\_status\_transition} \\ \hline
+\rowcolor{LightBlue}
+\textbf{Чухал зэрэг} & M (Must have) \\ \hline
+\end{tabularx}
+\end{table}
 
-\textbf{ФШ-07: Ширээ Удирдлага}\\
-Менежер ширээ нэмэх, засах, QR кодыг хэвлэх боломжтой байна. QR token
-автоматаар UUID форматаар үүснэ.
+\begin{table}[htbp]
+\caption{ФШ-06 Цэс удирдлага}
+\label{tab:fr06}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|L|}
+\hline
+\rowcolor{LightBlue}
+\textbf{Код} & ФШ-06 \\ \hline
+\textbf{Нэр} & Цэс, ангилал, хоолны CRUD удирдлага \\ \hline
+\rowcolor{LightBlue}
+\textbf{Тайлбар} & Менежер ангилал болон хоолыг нэмэх, засах, устгах боломжтой. Хоолны байдал (идэвхтэй/идэвхгүй) шуурхай шилждэг \\ \hline
+\textbf{Оролцогч} & Менежер \\ \hline
+\rowcolor{LightBlue}
+\textbf{Оролт} & Нэр, үнэ, тайлбар, зураг URL, ангилал, нөөцийн холбоос \\ \hline
+\textbf{Гаралт} & menu\_items/menu\_categories хүснэгтэд өөрчлөлт \\ \hline
+\rowcolor{LightBlue}
+\textbf{Баталгаажуулалт} & JWT + manager дүр, үнэ $\geq 0$, нэр давхардсан эсэх \\ \hline
+\textbf{Чухал зэрэг} & M (Must have) \\ \hline
+\end{tabularx}
+\end{table}
 
-\textbf{ФШ-08: Тайлан ба Нэгтгэл}\\
-Менежер/кассир өдрийн орлого, ширээ тус бүрийн захиалгын тоо, хамгийн эрэлттэй
-хоолны жагсаалтыг харах боломжтой байна. Тогтоосон хугацааны тайлан гаргана.
+\begin{table}[htbp]
+\caption{ФШ-07 Ширээ ба QR удирдлага}
+\label{tab:fr07}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|L|}
+\hline
+\rowcolor{LightBlue}
+\textbf{Код} & ФШ-07 \\ \hline
+\textbf{Нэр} & Ширээ ба QR удирдлага \\ \hline
+\rowcolor{LightBlue}
+\textbf{Тайлбар} & Менежер ширээ нэмэх, засварлах, устгах, QR кодыг PNG/PDF форматаар экспортлох боломжтой \\ \hline
+\textbf{Оролцогч} & Менежер \\ \hline
+\rowcolor{LightBlue}
+\textbf{Оролт} & Ширээний нэр, суудлын тоо, бүс (area) \\ \hline
+\textbf{Гаралт} & Шинэ QR token (UUID v4), PNG зураг \\ \hline
+\rowcolor{LightBlue}
+\textbf{Баталгаажуулалт} & Ширээний нэр давхцахгүй байх, суудал $>0$ \\ \hline
+\textbf{Чухал зэрэг} & M (Must have) \\ \hline
+\end{tabularx}
+\end{table}
+
+\begin{table}[htbp]
+\caption{ФШ-08 Тайлан, нэгтгэл}
+\label{tab:fr08}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|L|}
+\hline
+\rowcolor{LightBlue}
+\textbf{Код} & ФШ-08 \\ \hline
+\textbf{Нэр} & Тайлан, нэгтгэл \\ \hline
+\rowcolor{LightBlue}
+\textbf{Тайлбар} & Менежер/кассирт өдрийн орлого, ширээ тус бүрийн захиалгын тоо, эрэлттэй хоолны ТОП-10 жагсаалт, хугацааны тайлан харагдана \\ \hline
+\textbf{Оролцогч} & Менежер, Кассир \\ \hline
+\rowcolor{LightBlue}
+\textbf{Оролт} & Огнооны хязгаар (from, to), бүлэглэх параметр \\ \hline
+\textbf{Гаралт} & JSON тайлан, график, CSV экспорт \\ \hline
+\rowcolor{LightBlue}
+\textbf{Баталгаажуулалт} & Огноо хүчинтэй хязгаарт, хэрэглэгчийн дүр \\ \hline
+\textbf{Чухал зэрэг} & S (Should have) \\ \hline
+\end{tabularx}
+\end{table}
+
+\begin{table}[htbp]
+\caption{ФШ-09 Нөөцийн удирдлага ба автомат хасалт}
+\label{tab:fr09}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|L|}
+\hline
+\rowcolor{LightBlue}
+\textbf{Код} & ФШ-09 \\ \hline
+\textbf{Нэр} & Нөөцийн удирдлага, автомат хасалт ба дохиолол \\ \hline
+\rowcolor{LightBlue}
+\textbf{Тайлбар} & Менежер бараа нэмэхэд тухайн бараа цэсэнд автоматаар гарна. Захиалга өгөгдөх бүрт нөөц автомат хасагдана. Нөөц доод хэмжээнээс буурвал менежерт мэдэгдэл очно \\ \hline
+\textbf{Оролцогч} & Менежер, Кассир, Сервер \\ \hline
+\rowcolor{LightBlue}
+\textbf{Оролт} & Нэр, төрөл, тоо, доод хэмжээ, үнэ, ангилал \\ \hline
+\textbf{Гаралт} & \texttt{inventory\_items} + \texttt{menu\_items} нэгэн цагт үүсэх, low-stock Socket.IO мэдэгдэл \\ \hline
+\rowcolor{LightBlue}
+\textbf{Баталгаажуулалт} & Тоо бүхэл тоо, категори сонгогдсон, үнэ $\geq 0$ \\ \hline
+\textbf{Чухал зэрэг} & M (Must have) \\ \hline
+\end{tabularx}
+\end{table}
+
+\begin{table}[htbp]
+\caption{ФШ-10 Баталгаажуулалт ба дүрд суурилсан хандалт}
+\label{tab:fr10}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|L|}
+\hline
+\rowcolor{LightBlue}
+\textbf{Код} & ФШ-10 \\ \hline
+\textbf{Нэр} & JWT нотлолт ба \texttt{requireRole} middleware \\ \hline
+\rowcolor{LightBlue}
+\textbf{Тайлбар} & Ажилтан нэвтрэхэд JWT HS256 токен гарна. Бүх хамгаалалттай endpoint дээр \texttt{requireAuth} + \texttt{requireRole} дамжуулан шалгадаг \\ \hline
+\textbf{Оролцогч} & Кассир, Менежер \\ \hline
+\rowcolor{LightBlue}
+\textbf{Оролт} & \texttt{username} + \texttt{password} \\ \hline
+\textbf{Гаралт} & JWT access token (24 цаг), refresh хийх боломж \\ \hline
+\rowcolor{LightBlue}
+\textbf{Баталгаажуулалт} & \texttt{bcrypt} хашийг харьцуулах, идэвхтэй хэрэглэгч \\ \hline
+\textbf{Чухал зэрэг} & M (Must have) \\ \hline
+\end{tabularx}
+\end{table}
+
+\begin{table}[htbp]
+\caption{ФШ-11 Хэрэглэгчийн сэтгэгдэл}
+\label{tab:fr11}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|L|}
+\hline
+\rowcolor{LightBlue}
+\textbf{Код} & ФШ-11 \\ \hline
+\textbf{Нэр} & Хэрэглэгчийн сэтгэгдэл, үнэлгээ цуглуулах \\ \hline
+\rowcolor{LightBlue}
+\textbf{Тайлбар} & Захиалга төлөгдсөний дараа зочин үйлчилгээний үнэлгээ (1--5 одоор) болон сэтгэгдэл үлдээх боломжтой \\ \hline
+\textbf{Оролцогч} & Зочин, Менежер \\ \hline
+\rowcolor{LightBlue}
+\textbf{Оролт} & Үнэлгээний оноо, сэтгэгдлийн текст, захиалгын ID \\ \hline
+\textbf{Гаралт} & Сэтгэгдэл хадгалагдаж менежерт Socket.IO мэдэгдэл очно \\ \hline
+\rowcolor{LightBlue}
+\textbf{Чухал зэрэг} & S (Should have) \\ \hline
+\end{tabularx}
+\end{table}
+
+\begin{table}[htbp]
+\caption{ФШ-12 Олон төхөөрөмжийн session (нэг ширээ, олон утас)}
+\label{tab:fr12}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|L|}
+\hline
+\rowcolor{LightBlue}
+\textbf{Код} & ФШ-12 \\ \hline
+\textbf{Нэр} & Ширээний зэрэгцээ session \\ \hline
+\rowcolor{LightBlue}
+\textbf{Тайлбар} & Нэг QR кодоор хэд хэдэн гар утас нэгэн зэрэг захиалга өгч болно. Үйлчлүүлэгчийн хамт олны (party) нэгдсэн захиалга үүснэ \\ \hline
+\textbf{Оролцогч} & Зочин (олон) \\ \hline
+\rowcolor{LightBlue}
+\textbf{Оролт} & QR token + клиент бүрийн browser fingerprint \\ \hline
+\textbf{Гаралт} & Нэгдсэн захиалгын дугаар, session ID жагсаалт \\ \hline
+\rowcolor{LightBlue}
+\textbf{Чухал зэрэг} & S (Should have) \\ \hline
+\end{tabularx}
+\end{table}
 
 \section{Функционал бус шаардлага}
 
-\subsection{Програм хангамжийн чанарын шаардлага}
+Функционал бус шаардлага (ФБШ) нь системийн чанарын шинж чанар, үйлчилгээний
+түвшинг тодорхойлно. Эдгээрийг ISO/IEC 25010 ``Системийн ба програм хангамжийн
+чанарын загвар'' стандартын хүрээнд -- гүйцэтгэл, найдвартай байдал, аюулгүй
+байдал, хэрэглэхэд хялбар байдал, засвар үйлчилгээний чанар, зөөврийн байдал
+гэсэн ангиллуудад хуваасан.
+
+\subsection{Гүйцэтгэлийн шаардлага (Performance)}
 
 \begin{table}[htbp]
-\caption{Функционал бус шаардлагын хүснэгт}
-\label{tab:nfr}
+\caption{Гүйцэтгэл ба хариу хугацааны шаардлага}
+\label{tab:nfr_perf}
 \centering
 \small
 \begin{tabularx}{\textwidth}{|L|L|Y|}
@@ -136,18 +381,129 @@
 \textcolor{white}{\textbf{Шаардлага}} &
 \textcolor{white}{\textbf{Хэмжүүр}} &
 \textcolor{white}{\textbf{Заалт}} \\ \hline
-Хурд & API хариу & 200 мс-ээс бага \\ \hline
+QR уншуулалт ба цэс ачааллах & Хариу хугацаа (p95) & $\leq$ 3 секунд (4G/Wi-Fi нөхцөлд) \\ \hline
 \rowcolor{LightBlue}
-Хурд & WS мессеж & 100 мс-ээс бага \\ \hline
-Хүртээмж & Uptime & 99.5\% буюу түүнээс дээш \\ \hline
+API GET хариу хугацаа & Дундаж & $\leq$ 150 мс \\ \hline
+API GET хариу хугацаа & p95 & $\leq$ 200 мс \\ \hline
 \rowcolor{LightBlue}
-Ачаалал & Нэгэн цагт & 200+ холболт \\ \hline
-Аюулгүй байдал & Нотлох & JWT + HTTPS/TLS \\ \hline
+API POST хариу хугацаа & p95 & $\leq$ 300 мс \\ \hline
+WebSocket мессежийн латенси & Дундаж & $\leq$ 100 мс \\ \hline
 \rowcolor{LightBlue}
-Хэрэглэхэд хялбар & SUS оноо & 80+ (Сайн) \\ \hline
-Дэлгэцэнд зохицох & Responsive & 320px -- 1920px \\ \hline
+Нэгэн зэргийн холболт & Socket.IO & $\geq$ 200 идэвхтэй \\ \hline
+Throughput & HTTP RPS & $\geq$ 500 RPS \\ \hline
 \rowcolor{LightBlue}
-Сонсогдох & WCAG & 2.1 AA түвшин \\ \hline
+Өгөгдлийн сангийн хайлт (index-тэй) & p95 & $\leq$ 50 мс \\ \hline
+\end{tabularx}
+\end{table}
+
+\subsection{Найдвартай байдал ба хүртээмж (Reliability)}
+
+\begin{table}[htbp]
+\caption{Найдвартай байдал ба хүртээмжийн шаардлага}
+\label{tab:nfr_reliability}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|Y|}
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{Шаардлага}} &
+\textcolor{white}{\textbf{Хэмжүүр}} &
+\textcolor{white}{\textbf{Заалт}} \\ \hline
+Системийн идэвхтэй байдал & Uptime SLA & $\geq$ 99.5\% жилийн \\ \hline
+\rowcolor{LightBlue}
+Нөхөн сэргээх хугацаа & RTO & $\leq$ 30 минут \\ \hline
+Нөхөн сэргээх өгөгдөл алдагдал & RPO & $\leq$ 15 минут \\ \hline
+\rowcolor{LightBlue}
+Нөөцлөлтийн давтамж & Backup интервал & өдөр тутам автомат \\ \hline
+Алдааны хувь (HTTP 5xx) & Сарын дундаж & $\leq$ 0.1\% \\ \hline
+\rowcolor{LightBlue}
+Socket автомат дахин холболт & Timeout & $\leq$ 5 секунд \\ \hline
+Өгөгдлийн бүрэн бүтэн байдал & Foreign Key & 100\% ACID транзакц \\ \hline
+\end{tabularx}
+\end{table}
+
+\subsection{Аюулгүй байдал (Security)}
+
+\begin{table}[htbp]
+\caption{Аюулгүй байдлын шаардлага}
+\label{tab:nfr_security}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|Y|}
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{Шаардлага}} &
+\textcolor{white}{\textbf{Хэмжүүр}} &
+\textcolor{white}{\textbf{Заалт}} \\ \hline
+Нотлолт & Алгоритм & JWT HS256, 24 цагийн хугацаатай \\ \hline
+\rowcolor{LightBlue}
+Дамжуулалтын шифрлэлт & Протокол & HTTPS + TLS 1.3 \\ \hline
+Нууц үгийн хадгалалт & Хэшлэх & bcrypt 12 round \\ \hline
+\rowcolor{LightBlue}
+Дүрд суурилсан хандалт & RBAC & manager / cashier / kitchen \\ \hline
+SQL injection хамгаалалт & ORM & Drizzle prepared statement \\ \hline
+\rowcolor{LightBlue}
+XSS хамгаалалт & Sanitize & React ``\{\}'' escape + CSP header \\ \hline
+CORS бодлого & Origin & Whitelist-ээр хязгаарлагдсан \\ \hline
+\rowcolor{LightBlue}
+Rate limiting & Хандалт & 60 request/мин IP тутамд \\ \hline
+Аудит лог & Хадгалалт & Бүх write үйлдлийг server log \\ \hline
+\rowcolor{LightBlue}
+QR token & Санамсаргүй & crypto.randomUUID() (v4) \\ \hline
+\end{tabularx}
+\end{table}
+
+\subsection{Хэрэглэхэд хялбар байдал (Usability)}
+
+\begin{table}[htbp]
+\caption{Хэрэглэхэд хялбар байдлын шаардлага}
+\label{tab:nfr_usability}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|Y|}
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{Шаардлага}} &
+\textcolor{white}{\textbf{Хэмжүүр}} &
+\textcolor{white}{\textbf{Заалт}} \\ \hline
+SUS оноо & System Usability Scale & $\geq$ 80 (Сайн ангилал) \\ \hline
+\rowcolor{LightBlue}
+Сурах хугацаа & Шинэ ажилтан & $\leq$ 30 минут (training) \\ \hline
+Олон хэл & Интерфейс & Монгол + Англи \\ \hline
+\rowcolor{LightBlue}
+Responsive дизайн & Дэлгэцийн хэмжээ & 320px -- 2560px \\ \hline
+Хүртээмж & WCAG & 2.1 AA түвшин \\ \hline
+\rowcolor{LightBlue}
+Алдааны мессеж & Хэлбэр & Ойлгомжтой монгол текст \\ \hline
+Toast мэдэгдэл & Хугацаа & 3--5 секунд \\ \hline
+\end{tabularx}
+\end{table}
+
+\subsection{Засвар үйлчилгээ ба зөөврийн байдал (Maintainability \& Portability)}
+
+\begin{table}[htbp]
+\caption{Засвар үйлчилгээ ба зөөврийн байдлын шаардлага}
+\label{tab:nfr_maint}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|Y|}
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{Шаардлага}} &
+\textcolor{white}{\textbf{Хэмжүүр}} &
+\textcolor{white}{\textbf{Заалт}} \\ \hline
+Код бүтэц & Модуляр & pnpm workspace 6+ багц \\ \hline
+\rowcolor{LightBlue}
+Unit тестийн хамрах хүрээ & Coverage & $\geq$ 60\% \\ \hline
+Type-safety & TypeScript & \texttt{strict: true} \\ \hline
+\rowcolor{LightBlue}
+Бүртгэл & Structured log & JSON, pino \\ \hline
+Deploy хугацаа & CI/CD & $\leq$ 5 минут \\ \hline
+\rowcolor{LightBlue}
+Баримтжуулалт & README + JSDoc & 100\% public API \\ \hline
+Хөтөчийн дэмжлэг & Portability & Chrome/Safari/Edge сүүлийн 2 хувилбар \\ \hline
+\rowcolor{LightBlue}
+Үйлдлийн систем & Server & Linux (Ubuntu 22.04+), Docker бэлэн \\ \hline
 \end{tabularx}
 \end{table}
 
@@ -201,60 +557,139 @@ React компонент дэлгэцийн зохиомжийг Figma-д зох
 
 \section{Юзкейс диаграм}
 
-Системийн гурван үндсэн хэрэглэгчийн юзкейс диаграмийг Зураг~\ref{fig:usecase} дэлгэрэнгүй харуулав.
+Системийн гурван үндсэн хэрэглэгчийн (Зочин, Кассир, Менежер) юзкейс диаграмийг
+Зураг~\ref{fig:usecase} дээр дэлгэрэнгүй харуулав. Диаграм нь UML 2.5 стандартын
+дагуу зохиомжлогдсон бөгөөд тасархай сумтай \texttt{\textless{}\textless{}include\textgreater{}\textgreater{}}
+болон \texttt{\textless{}\textless{}extend\textgreater{}\textgreater{}} хамаарлыг илэрхийлж байна.
 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[
-  actor/.style={font=\small},
-  uc/.style={ellipse, draw, minimum width=3.2cm, minimum height=0.8cm,
-    align=center, font=\scriptsize},
-  sys/.style={rectangle, draw, dashed, minimum width=5cm,
-    minimum height=12cm, align=center},
+  actor/.style={font=\small, align=center},
+  uc/.style={ellipse, draw, minimum width=3.4cm, minimum height=0.8cm,
+    align=center, font=\scriptsize, fill=blue!5},
+  ucG/.style={ellipse, draw, minimum width=3.4cm, minimum height=0.8cm,
+    align=center, font=\scriptsize, fill=green!8},
+  ucC/.style={ellipse, draw, minimum width=3.4cm, minimum height=0.8cm,
+    align=center, font=\scriptsize, fill=yellow!15},
+  ucM/.style={ellipse, draw, minimum width=3.4cm, minimum height=0.8cm,
+    align=center, font=\scriptsize, fill=red!8},
+  stickman/.pic={
+    \draw (0,0.4) circle (0.1);
+    \draw (0,0.3) -- (0,0);
+    \draw (-0.15,0.15) -- (0.15,0.15);
+    \draw (0,0) -- (-0.15,-0.2);
+    \draw (0,0) -- (0.15,-0.2);
+  },
   arr/.style={-{Stealth}},
   inc/.style={dashed, -{Stealth}}
 ]
 
 % System boundary
-\draw[dashed] (0,-6.5) rectangle (9,6);
-\node[font=\small\bfseries] at (4.5,5.7) {Системийн хязгаар};
+\draw[dashed, thick, rounded corners=4pt] (-0.5,-10) rectangle (9.5,6);
+\node[font=\small\bfseries] at (4.5,5.7) {QR Restaurant System};
 
 % Actors
-\node[actor] (guest) at (-2.5, 2)  {\textbf{Зочин}};
-\node[actor] (cashier) at (-2.5,-2) {\textbf{Кассир}};
-\node[actor] (manager) at (11.5, 2) {\textbf{Менежер}};
+\pic at (-2.8, 4.2) {stickman};
+\node[actor] (guest)   at (-2.8, 3.3) {\textbf{Зочин}};
+\pic at (-2.8,-1.3) {stickman};
+\node[actor] (cashier) at (-2.8,-2.2)   {\textbf{Кассир}};
+\pic at (11.8, 2.7) {stickman};
+\node[actor] (manager) at (11.8, 1.8)   {\textbf{Менежер}};
+\pic at (11.8,-3.8) {stickman};
+\node[actor] (kitchen) at (11.8,-4.7) {\textbf{Гал тогоо}};
 
 % Guest use cases
-\node[uc] (uc1) at (4,5)   {QR код уншуулах};
-\node[uc] (uc2) at (4,3.5) {Цэс харах};
-\node[uc] (uc3) at (4,2)   {Захиалга өгөх};
-\node[uc] (uc4) at (4,0.5) {Статус харах};
+\node[ucG] (uc1) at (4,5)   {QR код уншуулах};
+\node[ucG] (uc2) at (4,4)   {Цэс харах};
+\node[ucG] (uc3) at (4,3)   {Захиалга өгөх};
+\node[ucG] (uc4) at (4,2)   {Статус харах};
+\node[ucG] (uc12) at (4,1)  {Сэтгэгдэл үлдээх};
 
 % Cashier use cases
-\node[uc] (uc5) at (4,-1)  {Захиалга харах};
-\node[uc] (uc6) at (4,-2.5){Тооцоо баталгаажуулах};
-\node[uc] (uc7) at (4,-4)  {Нэгтгэл харах};
+\node[ucC] (uc5) at (4,0)   {Захиалга хүлээн авах};
+\node[ucC] (uc6) at (4,-1)  {Тооцоо баталгаажуулах};
+\node[ucC] (uc7) at (4,-2)  {Нэгтгэл харах};
 
-% Manager use cases (right side also sees some)
-\node[uc] (uc8) at (4,-5.5){Цэс удирдах};
+% Manager use cases
+\node[ucM] (uc8) at (4,-3)  {Цэс удирдах};
+\node[ucM] (uc9) at (4,-4)  {Ширээ ба QR удирдах};
+\node[ucM] (uc10) at (4,-5) {Нөөц удирдах};
+\node[ucM] (uc11) at (4,-6) {Тайлан харах};
+\node[ucM] (uc13) at (4,-7) {Хэрэглэгч удирдах};
+\node[uc]  (uc14) at (4,-8) {Нэвтрэх};
+\node[uc]  (uc15) at (4,-9) {Гал тогооны дэлгэц};
 
-% Associations
+% Guest associations
 \draw[arr] (guest) -- (uc1);
 \draw[arr] (guest) -- (uc2);
 \draw[arr] (guest) -- (uc3);
 \draw[arr] (guest) -- (uc4);
+\draw[arr] (guest) -- (uc12);
+
+% Cashier associations
 \draw[arr] (cashier) -- (uc5);
 \draw[arr] (cashier) -- (uc6);
 \draw[arr] (cashier) -- (uc7);
+\draw[arr] (cashier) -- (uc10);
+\draw[arr] (cashier) -- (uc14);
+
+% Manager associations
 \draw[arr] (manager) -- (uc5);
+\draw[arr] (manager) -- (uc6);
 \draw[arr] (manager) -- (uc7);
 \draw[arr] (manager) -- (uc8);
+\draw[arr] (manager) -- (uc9);
+\draw[arr] (manager) -- (uc10);
+\draw[arr] (manager) -- (uc11);
+\draw[arr] (manager) -- (uc13);
+\draw[arr] (manager) -- (uc14);
 
-% Include
-\draw[inc] (uc3) -- node[right,font=\tiny]{<<include>>} (uc2);
+% Kitchen associations
+\draw[arr] (kitchen) -- (uc15);
+\draw[arr] (kitchen) -- (uc14);
+
+% Include / Extend relationships
+\draw[inc] (uc3) to[bend left=20] node[right,font=\tiny]{\textless{}\textless{}include\textgreater{}\textgreater{}} (uc2);
+\draw[inc] (uc6) to[bend left=30] node[left,font=\tiny]{\textless{}\textless{}extend\textgreater{}\textgreater{}} (uc12);
+\draw[inc] (uc5) to[bend left=20] node[right,font=\tiny]{\textless{}\textless{}include\textgreater{}\textgreater{}} (uc14);
+\draw[inc] (uc8) to[bend left=20] node[right,font=\tiny]{\textless{}\textless{}include\textgreater{}\textgreater{}} (uc14);
+
 \end{tikzpicture}
-\caption{Системийн юзкейс диаграм}
+\caption{Системийн UML юзкейс диаграм}
 \label{fig:usecase}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  role/.style={rectangle, draw, rounded corners=4pt, minimum width=2.6cm,
+    minimum height=0.7cm, align=center, font=\small\bfseries, fill=blue!12},
+  perm/.style={rectangle, draw, minimum width=3cm, minimum height=0.5cm,
+    align=left, font=\tiny, fill=white},
+  arr/.style={-{Stealth}, thick, gray}
+]
+
+\node[role] (mgr) at (0,0)  {Менежер};
+\node[role] (csh) at (0,-3) {Кассир};
+\node[role] (gst) at (0,-6) {Зочин};
+\node[role] (ktn) at (0,-9) {Гал тогоо};
+
+\node[perm, right=1cm of mgr, yshift=0.7cm]  {Цэс, ширээ, хэрэглэгч CRUD};
+\node[perm, right=1cm of mgr, yshift=0]      {Нөөц удирдлага, тайлан};
+\node[perm, right=1cm of mgr, yshift=-0.7cm] {Захиалгын бүрэн хяналт};
+
+\node[perm, right=1cm of csh, yshift=0.5cm]  {Захиалга, төлбөр};
+\node[perm, right=1cm of csh, yshift=-0.5cm] {Нөөц харах / шалгах};
+
+\node[perm, right=1cm of gst, yshift=0.5cm]  {QR-ээр цэс харах};
+\node[perm, right=1cm of gst, yshift=-0.5cm] {Захиалга өгөх, статус харах};
+
+\node[perm, right=1cm of ktn, yshift=0]      {Бэлтгэх захиалгын самбар (KDS)};
+
+\end{tikzpicture}
+\caption{Дүрд суурилсан хандалтын матриц (RBAC)}
+\label{fig:rbac}
 \end{figure}
 
 \section{Юзкейс диаграмын тодорхойлолт}
@@ -340,5 +775,158 @@ React компонент дэлгэцийн зохиомжийг Figma-д зох
 \rowcolor{LightBlue}
 Дараах нөхцөл & Цэс шинэчлэгдэнэ, зочдод харагдана \\ \hline
 Онцгой тохиолдол & Давхардсан нэр бол алдаа гарна \\ \hline
+\end{tabularx}
+\end{table}
+
+\textbf{ЮК-05: Ширээ болон QR удирдах}
+
+\begin{table}[htbp]
+\caption{ЮК-05 Ширээ болон QR удирдах тодорхойлолт}
+\label{tab:uc05}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|}
+\hline
+\rowcolor{LightBlue}
+Юзкейсийн нэр & Ширээ нэмэх, QR код үүсгэх, хэвлэх \\ \hline
+Оролцогч & Менежер \\ \hline
+\rowcolor{LightBlue}
+Өмнөх нөхцөл & Менежер системд нэвтэрсэн, manager эрхтэй \\ \hline
+Үндсэн урсгал & 1. ``Ширээний удирдлага'' хэсэгт нэвтэрнэ;
+  2. ``Шинэ ширээ'' товч дарна;
+  3. Ширээний нэр, суудал, бүсийг оруулна;
+  4. Систем UUID v4 token үүсгэнэ;
+  5. QR PNG зураг авто-генерациудна;
+  6. Менежер PNG татаж авч хэвлэнэ \\ \hline
+\rowcolor{LightBlue}
+Дараах нөхцөл & Шинэ ширээ бүртгэгдэж, зочдын хандалтад бэлэн болно \\ \hline
+Онцгой тохиолдол & Ширээний нэр давхардсан бол HTTP 409 Conflict \\ \hline
+\end{tabularx}
+\end{table}
+
+\textbf{ЮК-06: Нөөцийн удирдлага ба барааны нэмэлт}
+
+\begin{table}[htbp]
+\caption{ЮК-06 Нөөцийн удирдлага тодорхойлолт}
+\label{tab:uc06}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|}
+\hline
+\rowcolor{LightBlue}
+Юзкейсийн нэр & Бараа нэмэх, тоо шинэчлэх, доод хэмжээ тохируулах \\ \hline
+Оролцогч & Менежер, Кассир (зөвхөн харах, шинэчлэх) \\ \hline
+\rowcolor{LightBlue}
+Өмнөх нөхцөл & Нэвтэрсэн, дор хаяж нэг цэсний ангилал байна \\ \hline
+Үндсэн урсгал & 1. ``Нөөц'' хэсэгт нэвтэрнэ;
+  2. ``Бараа нэмэх'' товч дарна;
+  3. Нэр, төрөл, тоо, доод хэмжээ, үнэ, ангилал оруулна;
+  4. Серверт \texttt{POST /api/inventory} хүсэлт очно;
+  5. \texttt{inventory\_items} + \texttt{menu\_items} хоёр хүснэгтэд зэрэг бичигдэнэ;
+  6. Цэс шинэчлэгдэж, зочдод автоматаар гарна \\ \hline
+\rowcolor{LightBlue}
+Дараах нөхцөл & Бараа нөөцөд, цэсэнд нэмэгдэж, нөөцийн төлөв идэвхжинэ \\ \hline
+Онцгой тохиолдол & 1. Ангилал сонгоогүй бол 400 \texttt{validation\_error};
+  2. Үнэ сөрөг бол 400;
+  3. Хоол захиалсан нь устгах оролдлого $\to$ soft-delete (\texttt{available=false}) \\ \hline
+\end{tabularx}
+\end{table}
+
+\textbf{ЮК-07: Захиалгын статус шилжүүлэх}
+
+\begin{table}[htbp]
+\caption{ЮК-07 Захиалгын статус шилжүүлэх тодорхойлолт}
+\label{tab:uc07}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|}
+\hline
+\rowcolor{LightBlue}
+Юзкейсийн нэр & Захиалгын статус шилжүүлэх \\ \hline
+Оролцогч & Кассир, Менежер, Гал тогоо \\ \hline
+\rowcolor{LightBlue}
+Өмнөх нөхцөл & Захиалга \texttt{pending} статустай үүссэн \\ \hline
+Үндсэн урсгал & 1. Ажилтан захиалгын карт нээнэ;
+  2. Дараагийн статус товч дарна (``Баталгаажуулах'' г.м.);
+  3. \texttt{PATCH /api/orders/:id} хүсэлт;
+  4. Сервер state machine шалгаж DB шинэчлэнэ;
+  5. Socket.IO \texttt{order\_update} бүх client-д broadcast \\ \hline
+\rowcolor{LightBlue}
+Дараах нөхцөл & Статус дараагийн шатанд шилжиж, зочин мэдэгдэл авна \\ \hline
+Онцгой тохиолдол & Буруу дарааллаар шилжүүлвэл 400 \texttt{invalid\_status\_transition} \\ \hline
+\end{tabularx}
+\end{table}
+
+\textbf{ЮК-08: Өдрийн орлого, тайлан харах}
+
+\begin{table}[htbp]
+\caption{ЮК-08 Тайлан харах тодорхойлолт}
+\label{tab:uc08}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|}
+\hline
+\rowcolor{LightBlue}
+Юзкейсийн нэр & Өдрийн орлого, эрэлттэй хоол, ширээний статистик харах \\ \hline
+Оролцогч & Менежер, Кассир \\ \hline
+\rowcolor{LightBlue}
+Өмнөх нөхцөл & Ажилтан нэвтэрсэн \\ \hline
+Үндсэн урсгал & 1. ``Тайлан'' хэсэгт нэвтэрнэ;
+  2. Огнооны хязгаар (from--to) сонгоно;
+  3. \texttt{GET /api/reports/daily}, \texttt{/popular} дуудагдана;
+  4. Диаграм, хүснэгт хэлбэрээр харагдана;
+  5. Шаардлагатай бол CSV экспорт хийнэ \\ \hline
+\rowcolor{LightBlue}
+Дараах нөхцөл & Тайлан, аналитик менежерт харагдана \\ \hline
+Онцгой тохиолдол & Өгөгдөл байхгүй бол хоосон график, ``No data'' \\ \hline
+\end{tabularx}
+\end{table}
+
+\textbf{ЮК-09: Ажилтан нэвтрэх (Authentication)}
+
+\begin{table}[htbp]
+\caption{ЮК-09 Нэвтрэх тодорхойлолт}
+\label{tab:uc09}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|}
+\hline
+\rowcolor{LightBlue}
+Юзкейсийн нэр & Ажилтан нэвтрэх \\ \hline
+Оролцогч & Кассир, Менежер, Гал тогоо \\ \hline
+\rowcolor{LightBlue}
+Өмнөх нөхцөл & Хэрэглэгчийн бүртгэл үүссэн \\ \hline
+Үндсэн урсгал & 1. \texttt{/login} дэлгэцэнд user/pass оруулна;
+  2. \texttt{POST /api/auth/login} хүсэлт;
+  3. Сервер bcrypt харьцуулалт хийнэ;
+  4. JWT HS256 token буцаана;
+  5. Клиент localStorage дээр хадгалж, дараагийн хүсэлтэнд \texttt{Authorization: Bearer} header-аар илгээнэ \\ \hline
+\rowcolor{LightBlue}
+Дараах нөхцөл & Сессия үүсч, дүрд тохирсон дэлгэцэд шилжинэ \\ \hline
+Онцгой тохиолдол & Буруу нэр/нууц үг бол 401, 5 удаа буруу бол 15 мин lock \\ \hline
+\end{tabularx}
+\end{table}
+
+\textbf{ЮК-10: Сэтгэгдэл үлдээх}
+
+\begin{table}[htbp]
+\caption{ЮК-10 Сэтгэгдэл үлдээх тодорхойлолт}
+\label{tab:uc10}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|L|L|}
+\hline
+\rowcolor{LightBlue}
+Юзкейсийн нэр & Үйлчилгээний сэтгэгдэл, үнэлгээ үлдээх \\ \hline
+Оролцогч & Зочин \\ \hline
+\rowcolor{LightBlue}
+Өмнөх нөхцөл & Захиалга \texttt{paid} болсон \\ \hline
+Үндсэн урсгал & 1. Зочны дэлгэц үнэлгээ асуух modal нээнэ;
+  2. Зочин 1--5 од сонгож, сэтгэгдэл бичнэ;
+  3. \texttt{POST /api/feedback} хүсэлт;
+  4. Сервер feedback хадгалж менежерт Socket мэдэгдэл илгээнэ \\ \hline
+\rowcolor{LightBlue}
+Дараах нөхцөл & Сэтгэгдэл бүртгэгдэж, менежерийн дэлгэц шинэчлэгдэнэ \\ \hline
+Онцгой тохиолдол & Захиалга paid биш бол 403 Forbidden \\ \hline
 \end{tabularx}
 \end{table}

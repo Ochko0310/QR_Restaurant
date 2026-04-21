@@ -58,3 +58,20 @@ artifacts/api-server/uploads/
 # Claude
 .claude/
 .config/
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.lof
+*.lot
+*.out
+*.toc
+*.synctex.gz
+*.nav
+*.snm
+*.vrb
+.tools/

@@ -56,9 +56,27 @@
 }
 
 \usepackage{tikz}
-\usetikzlibrary{shapes,shapes.geometric,arrows,arrows.meta,positioning,fit,calc}
+\usetikzlibrary{shapes,shapes.geometric,arrows,arrows.meta,positioning,fit,calc,backgrounds}
 
 \usepackage{listings}
+\lstdefinelanguage{JavaScript}{
+  keywords={async, await, break, case, catch, class, const, continue, debugger,
+    default, delete, do, else, export, extends, finally, for, function, from,
+    if, import, in, instanceof, let, new, null, of, return, super, switch, this,
+    throw, try, typeof, undefined, var, void, while, with, yield, true, false},
+  keywordstyle=\bfseries\color{OliveGreen},
+  ndkeywords={console, document, window, require, module, exports, Promise},
+  ndkeywordstyle=\color{MUSTBlue},
+  sensitive=true,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  commentstyle=\itshape\color{CadetBlue},
+  stringstyle=\color{red!70!black},
+  morestring=[b]',
+  morestring=[b]",
+  morestring=[b]`,
+}
+\lstalias{TypeScript}{JavaScript}
 \lstset{
   basicstyle=\ttfamily\footnotesize,
   keywordstyle=\bfseries\color{OliveGreen},

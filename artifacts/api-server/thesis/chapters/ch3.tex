@@ -8,7 +8,31 @@
 
 Системийн архитектур нь 4 давхаргат клиент-серверийн загвараар зохиомжлогдсон
 (Зураг~\ref{fig:arch}). Давхарга тус бүр бие даасан үүрэг гүйцэтгэж, модулийн
-тусгаарлалт, засвар үйлчилгээний хялбар байдлыг хангадаг.
+тусгаарлалт, засвар үйлчилгээний хялбар байдлыг хангадаг. Үүний зэрэгцээ нийт
+кодын суурь нь \texttt{pnpm workspace} монорепо бүтэцтэй бөгөөд үндсэн дотоод
+багцуудыг Хүснэгт~\ref{tab:monorepo} дээр харуулав.
+
+\begin{table}[htbp]
+\caption{Монорепогийн дотоод багцуудын задаргаа}
+\label{tab:monorepo}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|L|}
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{Багц}} &
+\textcolor{white}{\textbf{Үүрэг}} \\ \hline
+\texttt{artifacts/api-server} & Express API + Socket.IO сервер \\ \hline
+\rowcolor{LightBlue}
+\texttt{artifacts/restaurant-app} & React + Vite клиент аппликейшн \\ \hline
+\texttt{lib/db} & Drizzle ORM schema, migration, seed \\ \hline
+\rowcolor{LightBlue}
+\texttt{lib/api-zod} & Zod валидацийн схем, хуваалцсан DTO \\ \hline
+\texttt{lib/ui-kit} & Хуваалцсан React компонент (shadcn/ui) \\ \hline
+\rowcolor{LightBlue}
+\texttt{lib/qr} & QR код үүсгэх / задлах туслах функцууд \\ \hline
+\end{tabularx}
+\end{table}
 
 \begin{figure}[htbp]
 \centering
@@ -87,19 +111,164 @@ PostgreSQL 16 өгөгдлийн сан нь ACID (Atomicity, Consistency, Isola
 боломжуудыг ашигласан. Drizzle ORM-ийн migration системээр өгөгдлийн сангийн бүтцийн
 хувилбарын хяналтыг автоматжуулсан.
 
-\section{Өгөгдлийн сангийн загварчлал}
+\subsection{Компонент диаграм}
 
-\subsection{ER диаграм}
-
-Системийн өгөгдлийн сан нь 6 үндсэн хүснэгтээс бүрдэх бөгөөд тэдгээрийн хоорондын
-холбоог Зураг~\ref{fig:er} дээр харуулав.
+Системийн сервер болон клиент талын компонентуудын хамаарлыг Зураг~\ref{fig:component}
+дээр харуулав. Сервер талын Express router-ууд нь \texttt{requireAuth}/\texttt{requireRole}
+middleware дундуур Drizzle repository-г дуудаж, PostgreSQL-той харилцдаг. Socket.IO
+давхаргаас тусдаа event bus нь HTTP controller-ээс event-үүдийг хүлээн авч клиент
+рүү broadcast хийдэг.
 
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[
-  entity/.style={rectangle, draw, fill=blue!8, minimum width=3.5cm,
+  comp/.style={rectangle, draw, rounded corners=4pt, minimum width=2.8cm,
+    minimum height=0.8cm, align=center, font=\scriptsize, fill=blue!6},
+  group/.style={rectangle, draw, dashed, rounded corners=6pt, inner sep=12pt},
+  arr/.style={-{Stealth}, thick, gray},
+  dep/.style={-{Stealth}, dashed, gray}
+]
+
+% Client side
+\node[comp, fill=green!10] (pages)  at (0,1)  {React Pages};
+\node[comp, fill=green!10] (hooks)  at (0,0)  {TanStack Query};
+\node[comp, fill=green!10] (state)  at (0,-1) {Zustand store};
+\node[comp, fill=green!10] (socket) at (0,-2) {Socket.IO client};
+
+\node[font=\small\bfseries, above=0.2cm of pages] {Клиент (Browser)};
+\begin{pgfonlayer}{background}
+  \node[group, fit=(pages)(hooks)(state)(socket), fill=green!3] {};
+\end{pgfonlayer}
+
+% Server side
+\node[comp] (router)     at (6, 1.5)  {Express router};
+\node[comp] (auth)       at (6, 0.5)  {requireAuth / Role};
+\node[comp] (service)    at (6,-0.5)  {Service layer};
+\node[comp] (repo)       at (6,-1.5)  {Drizzle repository};
+\node[comp] (sockets)    at (9.5, 0)  {Socket.IO server};
+\node[comp] (bus)        at (9.5,-1.5){EventBus};
+
+\node[font=\small\bfseries, above=0.5cm of router] {Сервер (Node.js)};
+\begin{pgfonlayer}{background}
+  \node[group, fit=(router)(auth)(service)(repo)(sockets)(bus), fill=blue!3] {};
+\end{pgfonlayer}
+
+% DB
+\node[comp, fill=red!8, cylinder, shape border rotate=90, aspect=0.25,
+  draw, minimum width=2.2cm, minimum height=1.4cm] (db) at (14,-1) {PostgreSQL};
+
+% Edges
+\draw[arr] (pages) -- (hooks);
+\draw[arr] (hooks) -- (state);
+\draw[arr] (hooks) -- node[above, font=\tiny]{HTTPS JSON} (router);
+\draw[arr] (socket) -- node[below, font=\tiny]{WSS} (sockets);
+\draw[arr] (router) -- (auth);
+\draw[arr] (auth) -- (service);
+\draw[arr] (service) -- (repo);
+\draw[arr] (repo) -- node[above, font=\tiny]{SQL} (db);
+\draw[arr] (service) -- (bus);
+\draw[arr] (bus) -- (sockets);
+\draw[dep] (sockets) -- node[right, font=\tiny]{broadcast} (bus);
+
+\end{tikzpicture}
+\caption{Системийн компонент диаграм}
+\label{fig:component}
+\end{figure}
+
+\subsection{Хэрэгжүүлэлтийн (Deployment) диаграм}
+
+Үйлчилгээний байршуулалтын загварыг Зураг~\ref{fig:deploy} дээр харуулав. Docker
+контейнерүүд \texttt{docker-compose} эсвэл үүл орчны Kubernetes Pod хэлбэрээр
+байршдаг.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  node/.style={rectangle, draw, rounded corners=4pt, minimum width=3.5cm,
+    minimum height=0.9cm, align=center, font=\scriptsize},
+  dev/.style={rectangle, draw, dashed, rounded corners=6pt, inner sep=10pt},
+  arr/.style={-{Stealth}, thick}
+]
+
+% Client device
+\node[node, fill=green!10] (phone) at (-5,2) {Зочны смартфон\\(Chrome / Safari)};
+\node[node, fill=green!10] (tablet) at (-5,0) {Ажилтны таблет\\(Chrome)};
+\node[node, fill=green!10] (pc) at (-5,-2) {Менежерийн PC\\(Chrome / Edge)};
+
+% CDN / LB
+\node[node, fill=orange!15] (lb) at (0,0) {Nginx Reverse Proxy\\(TLS 1.3)};
+
+% Server cluster
+\node[node, fill=blue!10] (node1) at (5,1.5) {Node.js API\\(Docker)};
+\node[node, fill=blue!10] (node2) at (5,0) {Socket.IO\\(same process)};
+
+% DB
+\node[node, fill=red!8]  (db) at (10,1) {PostgreSQL 16\\(primary)};
+\node[node, fill=red!5]  (db2) at (10,-0.5) {PostgreSQL 16\\(replica)};
+
+% Object storage
+\node[node, fill=yellow!20] (s3) at (10,-2) {Object Storage\\(image CDN)};
+
+% Arrows
+\draw[arr] (phone)  -- node[above, font=\tiny]{HTTPS} (lb);
+\draw[arr] (tablet) -- (lb);
+\draw[arr] (pc)     -- (lb);
+\draw[arr] (lb) -- node[above, font=\tiny]{/api} (node1);
+\draw[arr] (lb) -- node[below, font=\tiny]{/socket.io} (node2);
+\draw[arr] (node1) -- node[above, font=\tiny]{pg} (db);
+\draw[arr] (db) -- node[right, font=\tiny]{streaming replication} (db2);
+\draw[arr] (node1) -- node[right, font=\tiny]{S3 API} (s3);
+
+\end{tikzpicture}
+\caption{Системийн хэрэгжүүлэлтийн (deployment) диаграм}
+\label{fig:deploy}
+\end{figure}
+
+\section{Өгөгдлийн сангийн загварчлал}
+
+\subsection{ER диаграм}
+
+Системийн өгөгдлийн сан нь 9 үндсэн хүснэгтээс бүрдэх бөгөөд (Хүснэгт~\ref{tab:dbtables})
+хоорондын холбоог Зураг~\ref{fig:er} дээр харуулав. Нэмэлтээр нөөц (\texttt{inventory\_items}),
+зочны хамт олны session (\texttt{table\_sessions}), сэтгэгдэл (\texttt{feedback})
+хүснэгтүүд системийн өргөтгөсөн функцтэй холбоотой.
+
+\begin{table}[htbp]
+\caption{Өгөгдлийн сангийн үндсэн хүснэгтүүдийн жагсаалт}
+\label{tab:dbtables}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|L|l|}
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{Хүснэгт}} &
+\textcolor{white}{\textbf{Зориулалт}} &
+\textcolor{white}{\textbf{Бичлэгийн тоо*}} \\ \hline
+\texttt{users} & Ажилтны бүртгэл, нууц үгийн хэш & 10--50 \\ \hline
+\rowcolor{LightBlue}
+\texttt{tables} & Ширээ ба QR token & 20--100 \\ \hline
+\texttt{table\_sessions} & QR ширээгээр үүсгэсэн идэвхтэй session & 50--500/өдөр \\ \hline
+\rowcolor{LightBlue}
+\texttt{menu\_categories} & Цэсийн ангилал & 5--15 \\ \hline
+\texttt{menu\_items} & Цэсний хоол, үнэ, төлөв & 50--300 \\ \hline
+\rowcolor{LightBlue}
+\texttt{inventory\_items} & Түүхий эд, нөөц & 30--200 \\ \hline
+\texttt{orders} & Захиалга, статус & 200--1000/өдөр \\ \hline
+\rowcolor{LightBlue}
+\texttt{order\_items} & Захиалгын мөрүүд & 600--4000/өдөр \\ \hline
+\texttt{feedback} & Зочны үнэлгээ, сэтгэгдэл & 30--150/өдөр \\ \hline
+\end{tabularx}
+\end{table}
+
+\noindent\textit{\footnotesize * Жижиг дунд ресторан (30--80 ширээ, өдөр 200--1000 захиалга) жишээгээр тооцсон.}
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  entity/.style={rectangle, draw, fill=blue!10, minimum width=3.6cm,
     minimum height=0.6cm, font=\small\bfseries, rounded corners=3pt},
-  attr/.style={rectangle, draw, fill=white, minimum width=3.5cm,
+  attr/.style={rectangle, draw, fill=white, minimum width=3.6cm,
     font=\scriptsize, anchor=north},
   rel/.style={-{Stealth}, thick},
   node distance=0.3cm
@@ -109,8 +278,8 @@ PostgreSQL 16 өгөгдлийн сан нь ACID (Atomicity, Consistency, Isola
 \node[entity] (users) at (0,0) {users};
 \node[attr, below=of users] (ua) {
   \begin{tabular}{l}
-  id (PK) SERIAL\\
-  username VARCHAR(50)\\
+  \underline{id} (PK) SERIAL\\
+  username VARCHAR(50) UQ\\
   password\_hash TEXT\\
   role ENUM\\
   created\_at TIMESTAMP
@@ -121,31 +290,44 @@ PostgreSQL 16 өгөгдлийн сан нь ACID (Atomicity, Consistency, Isola
 \node[entity] (tables) at (6,0) {tables};
 \node[attr, below=of tables] (ta) {
   \begin{tabular}{l}
-  id (PK) SERIAL\\
+  \underline{id} (PK) SERIAL\\
   name VARCHAR(20)\\
-  qr\_token UUID\\
+  qr\_token UUID UQ\\
   capacity INTEGER\\
   status ENUM\\
   area VARCHAR(50)
   \end{tabular}
 };
 
+% Table Sessions
+\node[entity] (sessions) at (12,0) {table\_sessions};
+\node[attr, below=of sessions] (sa) {
+  \begin{tabular}{l}
+  \underline{id} (PK) UUID\\
+  table\_id (FK)\\
+  opened\_at TIMESTAMP\\
+  closed\_at TIMESTAMP\\
+  party\_size INTEGER
+  \end{tabular}
+};
+
 % Menu Categories
-\node[entity] (cats) at (0,-4.5) {menu\_categories};
+\node[entity] (cats) at (0,-5) {menu\_categories};
 \node[attr, below=of cats] (ca) {
   \begin{tabular}{l}
-  id (PK) SERIAL\\
+  \underline{id} (PK) SERIAL\\
   name VARCHAR(100)\\
   sort\_order INTEGER
   \end{tabular}
 };
 
 % Menu Items
-\node[entity] (items) at (6,-4.5) {menu\_items};
+\node[entity] (items) at (6,-5) {menu\_items};
 \node[attr, below=of items] (ia) {
   \begin{tabular}{l}
-  id (PK) SERIAL\\
-  category\_id (FK) INT\\
+  \underline{id} (PK) SERIAL\\
+  category\_id (FK)\\
+  inventory\_item\_id (FK)\\
   name VARCHAR(200)\\
   price NUMERIC(10,2)\\
   image\_url TEXT\\
@@ -153,39 +335,71 @@ PostgreSQL 16 өгөгдлийн сан нь ACID (Atomicity, Consistency, Isola
   \end{tabular}
 };
 
-% Orders
-\node[entity] (orders) at (0,-9) {orders};
-\node[attr, below=of orders] (oa) {
+% Inventory Items
+\node[entity] (inv) at (12,-5) {inventory\_items};
+\node[attr, below=of inv] (inva) {
   \begin{tabular}{l}
-  id (PK) SERIAL\\
-  table\_id (FK) INT\\
-  status ENUM\\
-  total NUMERIC(10,2)\\
-  created\_at TIMESTAMP\\
+  \underline{id} (PK) SERIAL\\
+  name VARCHAR(100)\\
+  type VARCHAR(50)\\
+  quantity INTEGER\\
+  threshold INTEGER\\
+  image\_url TEXT\\
   updated\_at TIMESTAMP
   \end{tabular}
 };
 
+% Orders
+\node[entity] (orders) at (0,-11) {orders};
+\node[attr, below=of orders] (oa) {
+  \begin{tabular}{l}
+  \underline{id} (PK) SERIAL\\
+  table\_id (FK)\\
+  session\_id (FK) UUID\\
+  status ENUM\\
+  total NUMERIC(10,2)\\
+  created\_at / updated\_at
+  \end{tabular}
+};
+
 % Order Items
-\node[entity] (oitems) at (6,-9) {order\_items};
+\node[entity] (oitems) at (6,-11) {order\_items};
 \node[attr, below=of oitems] (oia) {
   \begin{tabular}{l}
-  id (PK) SERIAL\\
-  order\_id (FK) INT\\
-  menu\_item\_id (FK) INT\\
+  \underline{id} (PK) SERIAL\\
+  order\_id (FK)\\
+  menu\_item\_id (FK)\\
   quantity INTEGER\\
   note TEXT\\
   subtotal NUMERIC(10,2)
   \end{tabular}
 };
 
-% Relationships
-\draw[rel] (cats) -- node[above,font=\tiny]{1:N} (items);
-\draw[rel] (tables) -- node[right,font=\tiny]{1:N} (orders);
-\draw[rel] (orders) -- node[above,font=\tiny]{1:N} (oitems);
-\draw[rel] (items) -- node[right,font=\tiny]{1:N} (oitems);
+% Feedback
+\node[entity] (fb) at (12,-11) {feedback};
+\node[attr, below=of fb] (fba) {
+  \begin{tabular}{l}
+  \underline{id} (PK) SERIAL\\
+  order\_id (FK)\\
+  rating SMALLINT (1--5)\\
+  comment TEXT\\
+  created\_at TIMESTAMP\\
+  read\_at TIMESTAMP
+  \end{tabular}
+};
 
-\end{tikzpicture}
+% Relationships
+\draw[rel] (tables) -- node[above,font=\tiny]{1:N} (sessions);
+\draw[rel] (cats) -- node[above,font=\tiny]{1:N} (items);
+\draw[rel] (inv) -- node[above,font=\tiny]{1:1 (nullable)} (items);
+\draw[rel] (tables.south) -| node[right,font=\tiny,pos=0.25]{1:N} (orders.north);
+\draw[rel] (sessions.south) -| node[left,font=\tiny,pos=0.25]{1:N} ([xshift=5mm]orders.north);
+\draw[rel] (orders) -- node[above,font=\tiny]{1:N} (oitems);
+\draw[rel] (items.south) -| node[right,font=\tiny,pos=0.25]{1:N} (oitems.north);
+\draw[rel] (orders.south) |- node[below,font=\tiny,pos=0.3]{1:0..1} (fb.west);
+
+\end{tikzpicture}%
+}
 \caption{Системийн ER (Entity-Relationship) диаграм}
 \label{fig:er}
 \end{figure}
@@ -262,6 +476,93 @@ CREATE TABLE order_items (
 );
 \end{lstlisting}
 
+\begin{lstlisting}[language=SQL, caption={inventory\_items хүснэгтийн бүтэц}, label={lst:inv}]
+CREATE TABLE inventory_items (
+  id         SERIAL PRIMARY KEY,
+  name       VARCHAR(100) NOT NULL,
+  type       VARCHAR(50)  NOT NULL,
+  quantity   INTEGER      NOT NULL DEFAULT 0,
+  threshold  INTEGER      NOT NULL DEFAULT 5,
+  image_url  TEXT,
+  updated_at TIMESTAMP    DEFAULT NOW()
+);
+
+-- menu_items.inventory_item_id FK-ээр холбогдоно
+ALTER TABLE menu_items
+  ADD COLUMN inventory_item_id INTEGER
+    REFERENCES inventory_items(id) ON DELETE SET NULL;
+\end{lstlisting}
+
+\begin{lstlisting}[language=SQL, caption={table\_sessions хүснэгтийн бүтэц}, label={lst:sessions}]
+CREATE TABLE table_sessions (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  table_id    INTEGER NOT NULL REFERENCES tables(id),
+  opened_at   TIMESTAMP DEFAULT NOW(),
+  closed_at   TIMESTAMP,
+  party_size  INTEGER DEFAULT 1
+);
+CREATE INDEX idx_sessions_active
+  ON table_sessions(table_id) WHERE closed_at IS NULL;
+\end{lstlisting}
+
+\begin{lstlisting}[language=SQL, caption={feedback хүснэгтийн бүтэц}, label={lst:fb}]
+CREATE TABLE feedback (
+  id         SERIAL PRIMARY KEY,
+  order_id   INTEGER UNIQUE REFERENCES orders(id),
+  rating     SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  comment    TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  read_at    TIMESTAMP
+);
+\end{lstlisting}
+
+\section{Захиалгын төлөвийн шилжилтийн диаграм}
+
+Захиалгын \texttt{status} баганын state machine-г Зураг~\ref{fig:state} дээр
+харуулав. State-үүд нь \texttt{pending} $\to$ \texttt{confirmed} $\to$
+\texttt{preparing} $\to$ \texttt{ready} $\to$ \texttt{served} $\to$ \texttt{paid}
+гэсэн дараалалтай бөгөөд серверийн талд шилжилтийг баталгаажуулдаг. Аль ч
+төлөвөөс \texttt{cancelled} төлөвт шилжих боломжтой (менежерийн зөвшөөрөлтэй).
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  state/.style={rectangle, draw, rounded corners=10pt, minimum width=2.4cm,
+    minimum height=0.8cm, align=center, font=\small, fill=blue!10},
+  initial/.style={circle, draw, fill=black, minimum size=0.3cm},
+  final/.style={circle, draw, fill=black, minimum size=0.3cm, double, double distance=2pt},
+  arr/.style={-{Stealth}, thick},
+  cancel/.style={-{Stealth}, thick, dashed, red!70}
+]
+
+\node[initial] (i) at (0,0) {};
+\node[state] (p) at (2.5,0) {pending};
+\node[state] (c) at (5.5,0) {confirmed};
+\node[state] (pr) at (8.5,0) {preparing};
+\node[state] (r) at (11.5,0) {ready};
+\node[state] (s) at (8.5,-2.5) {served};
+\node[state] (pd) at (5.5,-2.5) {paid};
+\node[state, fill=red!15] (cn) at (2.5,-2.5) {cancelled};
+\node[final] (f) at (0,-2.5) {};
+
+\draw[arr] (i) -- (p);
+\draw[arr] (p) -- node[above, font=\scriptsize]{confirm} (c);
+\draw[arr] (c) -- node[above, font=\scriptsize]{accept} (pr);
+\draw[arr] (pr) -- node[above, font=\scriptsize]{cook done} (r);
+\draw[arr] (r) -- node[right, font=\scriptsize]{deliver} (s);
+\draw[arr] (s) -- node[above, font=\scriptsize]{checkout} (pd);
+\draw[arr] (pd) -- (f);
+
+\draw[cancel] (p.south) to[bend right=20] node[left, font=\scriptsize]{cancel} (cn.north);
+\draw[cancel] (c.south) to[bend left=10] (cn.north east);
+\draw[cancel] (pr.south) to[bend left=20] (cn.north east);
+\draw[arr] (cn) -- (f);
+
+\end{tikzpicture}
+\caption{Захиалгын статусын шилжилтийн (state machine) диаграм}
+\label{fig:state}
+\end{figure}
+
 \section{Дарааллын диаграм}
 
 Захиалга өгөх үйл ажиллагааны дарааллын диаграмийг Зураг~\ref{fig:seq} дээр
@@ -314,6 +615,96 @@ CREATE TABLE order_items (
 \end{tikzpicture}
 \caption{Захиалга өгөх дарааллын (sequence) диаграм}
 \label{fig:seq}
+\end{figure}
+
+\subsection{Нэвтрэх (Authentication) дарааллын диаграм}
+
+JWT нотлолтын урсгалыг Зураг~\ref{fig:seq_auth} дээр харуулав. Клиент нэвтрэх
+хуудаснаас user/password илгээж, амжилттай бол сервер HS256 токен буцаана.
+Дараагийн бүх хүсэлтэд \texttt{Authorization: Bearer \textless{}token\textgreater{}}
+header-аар илгээгдэнэ.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  actor/.style={rectangle, draw, minimum width=2.2cm, minimum height=0.7cm,
+    align=center, font=\small\bfseries, fill=blue!10, rounded corners=3pt},
+  msg/.style={-{Stealth}, thick},
+  ret/.style={-{Stealth}, dashed},
+  note/.style={font=\scriptsize}
+]
+
+\node[actor] (client)  at (0,0)  {Клиент};
+\node[actor] (api)     at (4,0)  {API Server};
+\node[actor] (auth)    at (8,0)  {Auth Service};
+\node[actor] (db)      at (12,0) {PostgreSQL};
+
+\foreach \x in {client, api, auth, db} {
+  \draw[dashed, gray] (\x.south) -- ++(0,-8.5);
+}
+
+\draw[msg] (0,-1) -- node[above, note]{1. POST /api/auth/login \{user, pass\}} (4,-1);
+\draw[msg] (4,-1.5) -- node[above, note]{2. verify(user, pass)} (8,-1.5);
+\draw[msg] (8,-2) -- node[above, note]{3. SELECT user WHERE username} (12,-2);
+\draw[ret] (12,-2.5) -- node[above, note]{4. user row (hash, role)} (8,-2.5);
+\draw[msg] (8,-3) -- node[right, note, xshift=-8pt]{bcrypt.compare} (8,-3.5);
+\draw[ret] (8,-4) -- node[above, note]{5. JWT sign(HS256, 24h)} (4,-4);
+\draw[ret] (4,-4.5) -- node[above, note]{6. \{token, role\}} (0,-4.5);
+
+\node[note, text=gray] at (6,-5.3) {$\cdots$ Дараагийн хамгаалалттай хүсэлт $\cdots$};
+
+\draw[msg] (0,-6.3) -- node[above, note]{7. GET /api/orders + Bearer} (4,-6.3);
+\draw[msg] (4,-6.8) -- node[above, note]{8. verify(token)} (8,-6.8);
+\draw[ret] (8,-7.3) -- node[above, note]{9. payload \{userId, role\}} (4,-7.3);
+\draw[msg] (4,-7.8) -- node[above, note]{10. requireRole('manager')} (4,-8.3);
+\draw[ret] (4,-8) -- node[above, note]{11. orders JSON} (0,-8);
+
+\end{tikzpicture}
+\caption{JWT нэвтрэх ба баталгаажуулах дарааллын диаграм}
+\label{fig:seq_auth}
+\end{figure}
+
+\subsection{Нөөцийн автомат хасалтын дарааллын диаграм}
+
+Захиалга баталгаажих үед нөөц автомат хасагдах үйл явцыг Зураг~\ref{fig:seq_inv}
+харуулав. Транзакц доторх \texttt{UPDATE} нь багтаамжийг хамгаалж, доод хэмжээнээс
+доош буурвал менежерт мэдэгдэл илгээгдэнэ.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  actor/.style={rectangle, draw, minimum width=2.2cm, minimum height=0.7cm,
+    align=center, font=\small\bfseries, fill=blue!10, rounded corners=3pt},
+  msg/.style={-{Stealth}, thick},
+  ret/.style={-{Stealth}, dashed},
+  note/.style={font=\scriptsize}
+]
+
+\node[actor] (staff) at (0,0)   {Кассир};
+\node[actor] (api)   at (4,0)   {API Server};
+\node[actor] (tx)    at (8,0)   {Drizzle TX};
+\node[actor] (db)    at (11.5,0){PostgreSQL};
+\node[actor] (io)    at (15,0)  {Socket.IO};
+
+\foreach \x in {staff, api, tx, db, io} {
+  \draw[dashed, gray] (\x.south) -- ++(0,-7);
+}
+
+\draw[msg] (0,-1) -- node[above, note]{1. PATCH /orders/:id confirmed} (4,-1);
+\draw[msg] (4,-1.5) -- node[above, note]{2. BEGIN} (8,-1.5);
+\draw[msg] (8,-2) -- node[above, note]{3. UPDATE orders SET status} (11.5,-2);
+\draw[msg] (8,-2.5) -- node[above, note]{4. UPDATE inventory SET qty = qty - n} (11.5,-2.5);
+\draw[msg] (8,-3) -- node[above, note]{5. SELECT low-stock rows} (11.5,-3);
+\draw[ret] (11.5,-3.5) -- node[above, note]{6. rows[]} (8,-3.5);
+\draw[msg] (8,-4) -- node[above, note]{7. COMMIT} (11.5,-4);
+\draw[ret] (8,-4.5) -- node[above, note]{8. result} (4,-4.5);
+\draw[msg] (4,-5) -- node[above, note]{9. emit('order\_update')} (15,-5);
+\draw[msg] (4,-5.5) -- node[above, note]{10. emit('low\_stock')} (15,-5.5);
+\draw[ret] (4,-6) -- node[above, note]{11. 200 OK} (0,-6);
+
+\end{tikzpicture}
+\caption{Нөөцийн автомат хасалт ба low-stock мэдэгдлийн дараалал}
+\label{fig:seq_inv}
 \end{figure}
 
 \section{Үйл ажиллагааны диаграм}
@@ -455,9 +846,11 @@ CREATE TABLE order_items (
 
 \section{API жагсаалт}
 
-Системийн REST API endpoint-уудыг Хүснэгт~\ref{tab:api} дээр дэлгэрэнгүй харуулав.
+Системийн REST API endpoint-уудыг бүлэг тус бүрээр (auth, menu, tables,
+orders, inventory, reports, feedback, upload) нэгтгэн Хүснэгт~\ref{tab:api}
+дээр харуулав.
 
-\begin{longtable}{|c|l|l|p{4.5cm}|}
+\begin{longtable}{|c|l|l|p{5cm}|}
 \caption{REST API endpoint-уудын жагсаалт} \label{tab:api} \\
 \hline
 \rowcolor{TableHdr}
@@ -474,30 +867,57 @@ CREATE TABLE order_items (
 \textcolor{white}{\textbf{Тодорхойлолт}} \\ \hline
 \endhead
 
-1 & GET & /api/menu & Бүх цэсийн жагсаалт авах \\ \hline
+\multicolumn{4}{|l|}{\textbf{Auth}} \\ \hline
+1 & POST & /api/auth/login & Нэвтрэх, JWT авах \\ \hline
 \rowcolor{LightBlue}
-2 & POST & /api/menu & Шинэ хоол нэмэх (Manager) \\ \hline
-3 & PUT & /api/menu/:id & Хоолны мэдээлэл засах \\ \hline
+2 & POST & /api/auth/register & Шинэ хэрэглэгч (manager-only) \\ \hline
+3 & GET  & /api/auth/me & Одоогийн хэрэглэгчийн мэдээлэл \\ \hline
+\multicolumn{4}{|l|}{\textbf{Menu}} \\ \hline
+4 & GET  & /api/menu & Цэс (ангиллаар) \\ \hline
 \rowcolor{LightBlue}
-4 & DELETE & /api/menu/:id & Хоол устгах \\ \hline
-5 & GET & /api/tables & Бүх ширээний жагсаалт \\ \hline
+5 & GET  & /api/menu/categories & Ангиллын жагсаалт \\ \hline
+6 & POST & /api/menu & Шинэ хоол нэмэх \\ \hline
 \rowcolor{LightBlue}
-6 & POST & /api/tables & Шинэ ширээ нэмэх \\ \hline
-7 & GET & /api/tables/:token & QR token-оор ширээ хайх \\ \hline
+7 & PUT  & /api/menu/:id & Хоолны мэдээлэл засах \\ \hline
+8 & DELETE & /api/menu/:id & Хоол устгах \\ \hline
+\multicolumn{4}{|l|}{\textbf{Tables}} \\ \hline
 \rowcolor{LightBlue}
-8 & PUT & /api/tables/:id & Ширээний мэдээлэл засах \\ \hline
-9 & DELETE & /api/tables/:id & Ширээ устгах \\ \hline
+9 & GET  & /api/tables & Ширээний жагсаалт \\ \hline
+10 & GET  & /api/tables/:token & QR token-оор ширээ \\ \hline
 \rowcolor{LightBlue}
-10 & GET & /api/orders & Захиалгын жагсаалт \\ \hline
-11 & POST & /api/orders & Шинэ захиалга үүсгэх \\ \hline
+11 & POST & /api/tables & Шинэ ширээ \\ \hline
+12 & PUT  & /api/tables/:id & Ширээ засах \\ \hline
 \rowcolor{LightBlue}
-12 & PATCH & /api/orders/:id & Захиалгын статус шинэчлэх \\ \hline
-13 & GET & /api/reports/daily & Өдрийн тайлан \\ \hline
+13 & DELETE & /api/tables/:id & Ширээ устгах \\ \hline
+14 & GET  & /api/tables/:id/qr & QR PNG татах \\ \hline
+\multicolumn{4}{|l|}{\textbf{Orders}} \\ \hline
 \rowcolor{LightBlue}
-14 & GET & /api/reports/popular & Эрэлттэй хоолны тайлан \\ \hline
-15 & POST & /api/auth/login & Ажилтан нэвтрэх \\ \hline
+15 & GET  & /api/orders & Бүх захиалга \\ \hline
+16 & GET  & /api/orders/:id & Нэг захиалгын дэлгэрэнгүй \\ \hline
 \rowcolor{LightBlue}
-16 & POST & /api/upload & Зураг байршуулах \\ \hline
+17 & POST & /api/orders & Шинэ захиалга \\ \hline
+18 & PATCH & /api/orders/:id & Статус шинэчлэх \\ \hline
+\rowcolor{LightBlue}
+19 & DELETE & /api/orders/:id & Захиалга цуцлах \\ \hline
+\multicolumn{4}{|l|}{\textbf{Inventory}} \\ \hline
+20 & GET  & /api/inventory & Нөөцийн бараа \\ \hline
+\rowcolor{LightBlue}
+21 & POST & /api/inventory & Шинэ бараа + менюнд нэмэх \\ \hline
+22 & PATCH & /api/inventory/:id & Бараа засварлах \\ \hline
+\rowcolor{LightBlue}
+23 & DELETE & /api/inventory/:id & Бараа устгах (soft/hard) \\ \hline
+\multicolumn{4}{|l|}{\textbf{Reports}} \\ \hline
+24 & GET  & /api/reports/daily & Өдрийн орлого \\ \hline
+\rowcolor{LightBlue}
+25 & GET  & /api/reports/popular & Эрэлттэй хоол ТОП-10 \\ \hline
+26 & GET  & /api/reports/low-stock & Доод хэмжээнд хүрсэн нөөц \\ \hline
+\multicolumn{4}{|l|}{\textbf{Feedback ба бусад}} \\ \hline
+\rowcolor{LightBlue}
+27 & POST & /api/feedback & Зочны сэтгэгдэл илгээх \\ \hline
+28 & GET  & /api/feedback & Менежерт сэтгэгдлүүд \\ \hline
+\rowcolor{LightBlue}
+29 & PATCH & /api/feedback/:id/read & Сэтгэгдэл уншсан тэмдэглэх \\ \hline
+30 & POST & /api/upload & Зураг байршуулах (S3) \\ \hline
 
 \end{longtable}
 
@@ -518,13 +938,19 @@ CREATE TABLE order_items (
 \textcolor{white}{\textbf{Үйл явдал}} &
 \textcolor{white}{\textbf{Чиглэл}} &
 \textcolor{white}{\textbf{Тодорхойлолт}} \\ \hline
-1 & new\_order & Клиент $\to$ Сервер & Шинэ захиалга илгээх \\ \hline
+1 & connect & Клиент $\to$ Сервер & Socket холболт тогтоох \\ \hline
 \rowcolor{LightBlue}
-2 & order\_update & Сервер $\to$ Клиент & Захиалгын статус шинэчлэлт \\ \hline
-3 & order\_confirmed & Сервер $\to$ Клиент & Захиалга баталгаажсан мэдэгдэл \\ \hline
+2 & join\_room & Клиент $\to$ Сервер & restaurant\_1 эсвэл ширээний room-д нэгдэх \\ \hline
+3 & new\_order & Сервер $\to$ Ажилтан & Шинэ захиалга broadcast \\ \hline
 \rowcolor{LightBlue}
-4 & table\_update & Сервер $\to$ Клиент & Ширээний статус шинэчлэлт \\ \hline
-5 & join\_room & Клиент $\to$ Сервер & Ширээний өрөөнд нэгдэх \\ \hline
+4 & order\_update & Сервер $\to$ Клиент & Захиалгын статус шинэчлэлт \\ \hline
+5 & order\_confirmed & Сервер $\to$ Зочин & Захиалга баталгаажсан мэдэгдэл \\ \hline
+\rowcolor{LightBlue}
+6 & table\_update & Сервер $\to$ Клиент & Ширээний статус шинэчлэлт \\ \hline
+7 & low\_stock & Сервер $\to$ Менежер & Нөөц доод хэмжээнд хүрсэн \\ \hline
+\rowcolor{LightBlue}
+8 & new\_feedback & Сервер $\to$ Менежер & Зочноос сэтгэгдэл ирсэн \\ \hline
+9 & disconnect & Клиент $\to$ Сервер & Холболт тасрах \\ \hline
 \end{tabularx}
 \end{table}
 
@@ -560,7 +986,7 @@ WebSocket мессеж & 45 & 78 & 98 \\ \hline
 \end{table}
 
 Туршилтын үр дүнгээс харахад бүх endpoint-ийн дундаж хариу хугацаа 200 мс-ээс бага
-байгаа нь функционал бус шаардлагыг (Хүснэгт~\ref{tab:nfr}) бүрэн хангаж байна.
+байгаа нь функционал бус шаардлагыг (Хүснэгт~\ref{tab:nfr_perf}) бүрэн хангаж байна.
 WebSocket мессежийн дамжуулалт 45 мс дунджаар буюу 100 мс-ээс бага шаардлагыг давж
 хангасан.
 
@@ -634,7 +1060,7 @@ SUS оноо 84.2 нь ``Маш сайн'' (Excellent) зэрэглэлд хам
 Захиалгын алдааны хувь & 8.0\% & 0.5\% & $-$94\% \\ \hline
 Гал тогоонд хүрэх хугацаа & 4.2 мин & 0.045 мин & $-$99\% \\ \hline
 \rowcolor{LightBlue}
-Нэг зөөгч хариуцах ширээ & 8--10 & 20--30 & $+$150\% \\ \hline
+Нэг ажилтан хариуцах ширээ & 8--10 & 20--30 & $+$150\% \\ \hline
 Олон хэлний дэмжлэг & Хязгаартай & Бүрэн & -- \\ \hline
 \rowcolor{LightBlue}
 Тайлан, нэгтгэл & Гар ажиллагаа & Автомат & -- \\ \hline
@@ -646,7 +1072,7 @@ SUS оноо 84.2 нь ``Маш сайн'' (Excellent) зэрэглэлд хам
   \item Захиалга өгөх хугацаа 62\%-иар буурсан;
   \item Захиалгын алдааны хувь 94\%-иар буурсан;
   \item Захиалга гал тогоонд хүрэх хугацаа 99\%-иар буурсан;
-  \item Нэг зөөгчийн хариуцах ширээний тоо 150\%-иар нэмэгдсэн.
+  \item Нэг ажилтны хариуцах ширээний тоо 150\%-иар нэмэгдсэн.
 \end{itemize}
 
 \section{Хэрэгжүүлсэн системийн эх кодын жишээ}
@@ -713,10 +1139,15 @@ export const menuItems = pgTable('menu_items', {
 
 \section{Бүлгийн дүгнэлт}
 
-Энэхүү бүлэгт системийн 4 давхаргат архитектурыг тодорхойлж, ER диаграм болон
-SQL schema-г нарийвчлан боловсруулсан. Дарааллын болон үйл ажиллагааны диаграмаар
-системийн урсгалыг загварчилсан. 16 REST API endpoint, 5 Socket.IO үйл явдлыг
-тодорхойлон хэрэгжүүлсэн. k6 ачааллын туршилтаар системийн гүйцэтгэл шаардлагыг
-хангаж байгааг баталж, SUS үнэлгээгээр 84.2 оноо авсан нь ``Маш сайн'' зэрэглэлд
+Энэхүү бүлэгт системийн 4 давхаргат архитектурыг тодорхойлж, компонент болон
+хэрэгжүүлэлтийн диаграмаар дэлгэрэнгүй дүрсэлсэн. 9 хүснэгт бүхий ER диаграм
+болон SQL schema-г нарийвчлан боловсруулж, \texttt{inventory\_items},
+\texttt{table\_sessions}, \texttt{feedback} гэх системийн өргөтгөсөн функцүүдийг
+тусгасан. Захиалгын статусын шилжилтийн state machine диаграм, үндсэн захиалга
+болон нөөц хасалтын дараалал, JWT нэвтрэх сайд зэрэг 4 дарааллын диаграм,
+swimlane-тэй үйл ажиллагааны диаграмаар системийн урсгалыг бүрэн загварчилсан.
+Нийт 30 REST API endpoint-ийг 8 бүлэгт хувааж тодорхойлон 9 Socket.IO үйл явдлыг
+хэрэгжүүлсэн. k6 ачааллын туршилтаар системийн гүйцэтгэл шаардлагыг хангаж
+байгааг баталж, SUS үнэлгээгээр 84.2 оноо авсан нь ``Маш сайн'' зэрэглэлд
 хамаарч байгааг тогтоосон. Уламжлалт аргатай харьцуулахад захиалгын хугацаа 62\%,
 алдааны хувь 94\%-иар буурсан гэсэн тодорхой үр дүн гарсан.
