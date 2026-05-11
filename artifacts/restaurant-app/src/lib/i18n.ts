@@ -50,7 +50,7 @@ const mn: Dict = {
   tab_reports: "Тайлан",
   tab_inventory: "Бараа",
   tab_tables: "Ширээ",
-  tab_reservations: "Захиалга",
+  tab_reservations: "Ширээний захиалга",
   tab_banners: "Зар",
   tab_reviews: "Сэтгэгдэл",
   tab_shifts: "Ээлж",
@@ -161,7 +161,7 @@ const en: Dict = {
   tab_reports: "Reports",
   tab_inventory: "Inventory",
   tab_tables: "Tables",
-  tab_reservations: "Reservations",
+  tab_reservations: "Table Reservations",
   tab_banners: "Banners",
   tab_reviews: "Reviews",
   tab_shifts: "Shifts",
@@ -238,9 +238,14 @@ export const useLang = create<LangStore>()(
   persist(
     (set) => ({
       lang: "mn",
-      setLang: (lang) => set({ lang }),
+      setLang: () => set({ lang: "mn" }),
     }),
-    { name: "lang" }
+    {
+      name: "lang",
+      version: 2,
+      migrate: () => ({ lang: "mn" as Lang } as LangStore),
+      partialize: (state) => ({ lang: state.lang }) as LangStore,
+    }
   )
 );
 

@@ -1,6 +1,7 @@
 import type { Server as SocketIOServer } from "socket.io";
 import { db } from "@workspace/db";
 import { notificationsTable } from "@workspace/db";
+import { STAFF_ROOM } from "./config";
 
 export type NotificationPayload = {
   type: string;
@@ -17,7 +18,7 @@ export async function createNotification(io: SocketIOServer | undefined, payload
     data: payload.data ?? null,
   }).returning();
   if (io) {
-    io.to("restaurant_1").emit("notification:new", row);
+    io.to(STAFF_ROOM).emit("notification:new", row);
   }
   return row;
 }

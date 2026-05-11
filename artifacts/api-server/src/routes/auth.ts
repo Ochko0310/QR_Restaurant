@@ -37,7 +37,8 @@ router.post("/auth/login", async (req, res) => {
     const token = signToken(payload);
     res.json({ token, user: { id: user.id, username: user.username, name: user.name, role: user.role } });
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 

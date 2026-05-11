@@ -25,7 +25,8 @@ router.get("/menu/categories", async (_req, res) => {
     }));
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -35,7 +36,8 @@ router.post("/menu/categories", requireAuth, requireRole("manager"), async (req,
     const [cat] = await db.insert(menuCategoriesTable).values({ name, description, sortOrder: sortOrder ?? 0, parentId: parentId ?? null }).returning();
     res.status(201).json({ ...cat, items: [], children: [] });
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -60,7 +62,8 @@ router.delete("/menu/categories/:catId", requireAuth, requireRole("manager"), as
     await db.delete(menuCategoriesTable).where(eq(menuCategoriesTable.id, catId));
     res.status(204).send();
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -69,7 +72,8 @@ router.get("/menu/items", async (_req, res) => {
     const items = await db.select().from(menuItemsTable).orderBy(asc(menuItemsTable.id));
     res.json(items);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -96,7 +100,8 @@ router.post("/menu/items", requireAuth, requireRole("manager"), async (req, res)
       .returning();
     res.status(201).json(item);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -146,7 +151,8 @@ router.patch("/menu/items/:itemId", requireAuth, requireRole("manager"), async (
 
     res.json(item);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -166,7 +172,8 @@ router.delete("/menu/items/:itemId", requireAuth, requireRole("manager"), async 
       res.status(204).send();
     }
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 

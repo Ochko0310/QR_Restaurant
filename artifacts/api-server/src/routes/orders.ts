@@ -1,10 +1,11 @@
 import { Router, type Request } from "express";
 import { db } from "@workspace/db";
-import { ordersTable, orderItemsTable, tablesTable, menuItemsTable, tableSessionsTable, customersTable, inventoryItemsTable } from "@workspace/db";
-import { eq, and, inArray, isNull } from "drizzle-orm";
-import { requireAuth, requireRole } from "../lib/auth";
+import { ordersTable, orderItemsTable, tablesTable, menuItemsTable, tableSessionsTable, customersTable, inventoryItemsTable, staffShiftsTable } from "@workspace/db";
+import { eq, and, inArray, isNull, gte, lte } from "drizzle-orm";
+import { requireAuth, requireRole, optionalAuth, verifySessionToken } from "../lib/auth";
 import type { JwtPayload } from "../lib/auth";
 import { createNotification } from "../lib/notifications";
+import { STAFF_ROOM } from "../lib/config";
 
 const VALID_STATUSES = ["pending", "confirmed", "preparing", "ready", "served", "paid", "cancelled"] as const;
 type OrderStatus = (typeof VALID_STATUSES)[number];
@@ -23,16 +24,70 @@ import type { Server as SocketIOServer } from "socket.io";
 
 const router = Router();
 
-async function getOrderWithItems(orderId: number) {
-  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
-  if (!order) return null;
+// A "global shift" period spans any continuous time during which at least one
+// staff member is clocked in. When all clock out, the period closes; the next
+// clock-in starts a new period. Order numbers reset to 1 at each period start.
+type ShiftPeriod = { start: number; end: number };
 
-  const [table] = await db.select().from(tablesTable).where(eq(tablesTable.id, order.tableId));
+async function computeShiftPeriods(): Promise<ShiftPeriod[]> {
+  const shifts = await db.select().from(staffShiftsTable);
+  const intervals = shifts
+    .map((s) => ({
+      start: new Date(s.clockInAt).getTime(),
+      end: s.clockOutAt ? new Date(s.clockOutAt).getTime() : Number.POSITIVE_INFINITY,
+    }))
+    .sort((a, b) => a.start - b.start);
+  const periods: ShiftPeriod[] = [];
+  for (const iv of intervals) {
+    const last = periods[periods.length - 1];
+    if (last && iv.start <= last.end) {
+      last.end = Math.max(last.end, iv.end);
+    } else {
+      periods.push({ ...iv });
+    }
+  }
+  return periods;
+}
+
+function findShiftPeriodIdx(periods: ShiftPeriod[], t: number): number {
+  for (let i = 0; i < periods.length; i++) {
+    const p = periods[i];
+    if (p && t >= p.start && t <= p.end) return i;
+  }
+  return -1;
+}
+
+async function getOrderWithItems(orderId: number) {
+  const [orderWithTable] = await db
+    .select({ order: ordersTable, tableName: tablesTable.name })
+    .from(ordersTable)
+    .leftJoin(tablesTable, eq(tablesTable.id, ordersTable.tableId))
+    .where(eq(ordersTable.id, orderId));
+  if (!orderWithTable) return null;
+
+  const { order, tableName } = orderWithTable;
   const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, orderId));
+
+  // Order number within the order's shift period — counts orders created at or
+  // before this one within the same merged shift window.
+  let shiftNumber: number | null = null;
+  const periods = await computeShiftPeriods();
+  const t = new Date(order.createdAt).getTime();
+  const idx = findShiftPeriodIdx(periods, t);
+  if (idx !== -1) {
+    const period = periods[idx]!;
+    const periodStart = new Date(period.start);
+    const sameOrEarlier = await db
+      .select({ id: ordersTable.id })
+      .from(ordersTable)
+      .where(and(gte(ordersTable.createdAt, periodStart), lte(ordersTable.createdAt, new Date(order.createdAt))));
+    shiftNumber = sameOrEarlier.length;
+  }
 
   return {
     ...order,
-    tableName: table?.name ?? "",
+    shiftNumber,
+    tableName: tableName ?? "",
     totalAmount: Number(order.totalAmount),
     discount: Number(order.discount),
     tipAmount: Number(order.tipAmount ?? 0),
@@ -73,8 +128,31 @@ router.get("/orders", requireAuth, async (req, res) => {
     const orderIds = orders.map((o) => o.id);
     const allItems = orderIds.length > 0 ? await db.select().from(orderItemsTable).where(inArray(orderItemsTable.orderId, orderIds)) : [];
 
+    // Assign per-shift order numbers. Orders are already sorted by createdAt
+    // asc, so we walk forward and reset the counter whenever the shift period
+    // changes.
+    const periods = await computeShiftPeriods();
+    const shiftNumberById = new Map<number, number | null>();
+    let counter = 0;
+    let activePeriodIdx = -1;
+    for (const o of orders) {
+      const t = new Date(o.createdAt).getTime();
+      const idx = findShiftPeriodIdx(periods, t);
+      if (idx === -1) {
+        shiftNumberById.set(o.id, null);
+        continue;
+      }
+      if (idx !== activePeriodIdx) {
+        counter = 0;
+        activePeriodIdx = idx;
+      }
+      counter += 1;
+      shiftNumberById.set(o.id, counter);
+    }
+
     const result = orders.map((order) => ({
       ...order,
+      shiftNumber: shiftNumberById.get(order.id) ?? null,
       tableName: tableMap.get(order.tableId)?.name ?? "",
       totalAmount: Number(order.totalAmount),
       discount: Number(order.discount),
@@ -89,29 +167,53 @@ router.get("/orders", requireAuth, async (req, res) => {
 
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
-router.post("/orders", async (req, res) => {
+router.post("/orders", optionalAuth, async (req, res) => {
   try {
-    const { tableToken, customerId, items, notes, paymentMethod } = req.body as {
+    const { tableToken, customerId, items, notes, paymentMethod, sessionToken: bodySessionToken } = req.body as {
       tableToken: string;
       customerId?: string;
       items: Array<{ menuItemId: number; quantity: number; notes?: string }>;
       notes?: string;
       paymentMethod?: "cash" | "bank";
+      sessionToken?: string;
     };
+
+    const staffUser = (req as Request & { user?: JwtPayload }).user;
+    const isStaff = staffUser?.role === "manager" || staffUser?.role === "cashier";
+    const sessionTokenRaw = (req.headers["x-session-token"] as string | undefined) ?? bodySessionToken;
 
     if (!tableToken || !items?.length) {
       res.status(400).json({ error: "bad_request", message: "tableToken and items required" });
       return;
     }
 
-    if (!customerId) {
-      res.status(400).json({ error: "bad_request", message: "customerId required" });
-      return;
+    // Guests must present a session JWT (issued at check-in). The JWT binds the
+    // order to a specific session + customer, so the QR alone is insufficient.
+    let sessionPayload: { sid: number; tid: number; cid: string } | null = null;
+    if (!isStaff) {
+      if (!sessionTokenRaw) {
+        res.status(401).json({ error: "missing_session_token", message: "Session token шаардлагатай" });
+        return;
+      }
+      try {
+        sessionPayload = verifySessionToken(sessionTokenRaw);
+      } catch {
+        res.status(401).json({ error: "invalid_session_token", message: "Session token хүчингүй эсвэл хугацаа нь дууссан" });
+        return;
+      }
+      // Prefer the JWT's customerId over body; ignore body customerId mismatch.
+      if (customerId && customerId !== sessionPayload.cid) {
+        res.status(403).json({ error: "customer_mismatch", message: "Session-д өөр customerId холбогдсон" });
+        return;
+      }
     }
+
+    const effectiveCustomerId = sessionPayload?.cid ?? customerId;
 
     // Validate quantities
     for (const item of items) {
@@ -121,10 +223,12 @@ router.post("/orders", async (req, res) => {
       }
     }
 
-    const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, customerId));
-    if (!customer) {
-      res.status(401).json({ error: "invalid_customer", message: "Зочны бүртгэл олдсонгүй" });
-      return;
+    if (effectiveCustomerId) {
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, effectiveCustomerId));
+      if (!customer) {
+        res.status(401).json({ error: "invalid_customer", message: "Зочны бүртгэл олдсонгүй" });
+        return;
+      }
     }
 
     const [table] = await db.select().from(tablesTable).where(eq(tablesTable.qrToken, tableToken));
@@ -133,23 +237,45 @@ router.post("/orders", async (req, res) => {
       return;
     }
 
-    // QR session security: only allow ordering when table is occupied (activated by staff)
-    if (table.status === "available") {
-      res.status(403).json({ error: "table_not_active", message: "Ширээ идэвхжээгүй байна. Үйлчлэгчид хандана уу." });
+    if (sessionPayload && sessionPayload.tid !== table.id) {
+      res.status(403).json({ error: "table_mismatch", message: "Session энэ ширээнд хамаарахгүй" });
       return;
     }
 
-    // An open session must exist (staff activated the table).
-    // Multiple guests sharing the same table may all order on the same
-    // active session — we do not require the session's creator customerId
-    // to match this order's customerId.
-    const [openSession] = await db
+    // Guests can only order at already-activated tables. Staff auto-activate
+    // the table as part of creating the order.
+    if (table.status === "available") {
+      if (!isStaff) {
+        res.status(403).json({ error: "table_not_active", message: "Ширээ идэвхжээгүй байна. Үйлчлэгчид хандана уу." });
+        return;
+      }
+      await db
+        .update(tablesTable)
+        .set({ status: "occupied", occupiedSince: new Date() })
+        .where(eq(tablesTable.id, table.id));
+      table.status = "occupied";
+    }
+
+    // An open session must exist. Staff who just activated the table may need
+    // a fresh one; guests rely on staff having started the session earlier.
+    let [openSession] = await db
       .select()
       .from(tableSessionsTable)
       .where(and(eq(tableSessionsTable.tableId, table.id), isNull(tableSessionsTable.endedAt)));
 
     if (!openSession) {
-      res.status(403).json({ error: "no_session", message: "Идэвхтэй session байхгүй байна" });
+      if (!isStaff) {
+        res.status(403).json({ error: "no_session", message: "Идэвхтэй session байхгүй байна" });
+        return;
+      }
+      [openSession] = await db
+        .insert(tableSessionsTable)
+        .values({ tableId: table.id })
+        .returning();
+    }
+
+    if (sessionPayload && sessionPayload.sid !== openSession.id) {
+      res.status(401).json({ error: "session_ended", message: "Session дууссан. Дахин check-in хийнэ үү." });
       return;
     }
 
@@ -175,19 +301,22 @@ router.post("/orders", async (req, res) => {
     const method = paymentMethod ?? "cash";
 
     // Only merge with the same guest's most recent active order within 10
-    // minutes so each guest at a shared table keeps their own ticket.
+    // minutes so each guest at a shared table keeps their own ticket. Staff
+    // orders have no customerId, so they never merge.
     const activeStatuses = ["pending", "confirmed", "preparing"] as const;
-    const existingOrders = await db
-      .select()
-      .from(ordersTable)
-      .where(
-        and(
-          eq(ordersTable.tableId, table.id),
-          eq(ordersTable.customerId, customerId),
-          inArray(ordersTable.status, [...activeStatuses]),
-        )
-      )
-      .orderBy(ordersTable.createdAt);
+    const existingOrders = effectiveCustomerId
+      ? await db
+          .select()
+          .from(ordersTable)
+          .where(
+            and(
+              eq(ordersTable.tableId, table.id),
+              eq(ordersTable.customerId, effectiveCustomerId),
+              inArray(ordersTable.status, [...activeStatuses]),
+            )
+          )
+          .orderBy(ordersTable.createdAt)
+      : [];
 
     const MERGE_WINDOW_MS = 10 * 60 * 1000;
     const mostRecent = existingOrders[existingOrders.length - 1];
@@ -234,7 +363,7 @@ router.post("/orders", async (req, res) => {
         .values({
           tableId: table.id,
           tableToken,
-          customerId,
+          customerId: effectiveCustomerId ?? null,
           sessionId: openSession.id,
           totalAmount: String(newTotal),
           notes: notes ?? null,
@@ -292,9 +421,9 @@ router.post("/orders", async (req, res) => {
 
     const io: SocketIOServer = req.app.get("io");
     if (withinMergeWindow) {
-      io.to(`restaurant_1`).emit("order:updated", fullOrder);
+      io.to(STAFF_ROOM).emit("order:updated", fullOrder);
     } else {
-      io.to(`restaurant_1`).emit("order:new", fullOrder);
+      io.to(STAFF_ROOM).emit("order:new", fullOrder);
       await createNotification(io, {
         type: "order_new",
         title: "Шинэ захиалга",
@@ -311,7 +440,8 @@ router.post("/orders", async (req, res) => {
 
     res.status(withinMergeWindow ? 200 : 201).json(fullOrder);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -325,7 +455,8 @@ router.get("/orders/:orderId", requireAuth, async (req, res) => {
     }
     res.json(order);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -376,12 +507,13 @@ router.patch("/orders/:orderId/status", requireAuth, async (req, res) => {
     // On cancellation — restore inventory for any items that consumed stock
     if (status === "cancelled" && currentOrder.status !== "cancelled") {
       const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, orderId));
-      const menuIds = [...new Set(items.map((i) => i.menuItemId))];
+      const menuIds = [...new Set(items.map((i) => i.menuItemId).filter((v): v is number => v != null))];
       if (menuIds.length > 0) {
         const linked = await db.select().from(menuItemsTable).where(inArray(menuItemsTable.id, menuIds));
         const invMap = new Map(linked.filter((m) => m.inventoryItemId).map((m) => [m.id, m.inventoryItemId!]));
         const restore = new Map<number, number>();
         for (const it of items) {
+          if (it.menuItemId == null) continue;
           const invId = invMap.get(it.menuItemId);
           if (invId) restore.set(invId, (restore.get(invId) ?? 0) + it.quantity);
         }
@@ -401,7 +533,7 @@ router.patch("/orders/:orderId/status", requireAuth, async (req, res) => {
     const fullOrder = await getOrderWithItems(orderId);
 
     const io: SocketIOServer = req.app.get("io");
-    io.to(`restaurant_1`).emit("order:updated", fullOrder);
+    io.to(STAFF_ROOM).emit("order:updated", fullOrder);
     io.to(`session_${updated.tableToken}`).emit("order:updated", fullOrder);
 
     if (status === "paid") {
@@ -414,10 +546,9 @@ router.patch("/orders/:orderId/status", requireAuth, async (req, res) => {
         (o) => o.id === orderId || o.status === "paid" || o.status === "cancelled"
       );
       if (allPaidOrCancelled) {
-        const newToken = (await import("uuid")).v4();
         await db
           .update(tablesTable)
-          .set({ status: "available", occupiedSince: null, qrToken: newToken })
+          .set({ status: "available", occupiedSince: null })
           .where(eq(tablesTable.id, updated.tableId));
         await db
           .update(tableSessionsTable)
@@ -428,7 +559,8 @@ router.patch("/orders/:orderId/status", requireAuth, async (req, res) => {
 
     res.json(fullOrder);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -453,7 +585,9 @@ router.delete("/orders/:orderId/items/:itemId", requireAuth, requireRole("manage
     if (!deleted) { res.status(404).json({ error: "not_found", message: "Хоол олдсонгүй" }); return; }
 
     // Restore inventory if the voided menu item is linked
-    const [menu] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, deleted.menuItemId));
+    const menu = deleted.menuItemId != null
+      ? (await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, deleted.menuItemId)))[0]
+      : undefined;
     if (menu?.inventoryItemId) {
       const [prev] = await db.select().from(inventoryItemsTable).where(eq(inventoryItemsTable.id, menu.inventoryItemId));
       if (prev) {
@@ -472,12 +606,13 @@ router.delete("/orders/:orderId/items/:itemId", requireAuth, requireRole("manage
 
     const fullOrder = await getOrderWithItems(orderId);
     const io: SocketIOServer = req.app.get("io");
-    io.to(`restaurant_1`).emit("order:updated", fullOrder);
+    io.to(STAFF_ROOM).emit("order:updated", fullOrder);
     io.to(`session_${order.tableToken}`).emit("order:updated", fullOrder);
 
     res.json(fullOrder);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -521,11 +656,12 @@ router.patch("/orders/:orderId/billing", requireAuth, requireRole("manager", "ca
     await db.update(ordersTable).set(updates).where(eq(ordersTable.id, orderId));
     const fullOrder = await getOrderWithItems(orderId);
     const io: SocketIOServer = req.app.get("io");
-    io.to(`restaurant_1`).emit("order:updated", fullOrder);
+    io.to(STAFF_ROOM).emit("order:updated", fullOrder);
     if (fullOrder) io.to(`session_${fullOrder.tableToken}`).emit("order:updated", fullOrder);
     res.json(fullOrder);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -539,8 +675,25 @@ router.get("/orders/table/:tableToken", async (req, res) => {
 
     const [table] = orders.length > 0 ? await db.select().from(tablesTable).where(eq(tablesTable.id, orders[0]!.tableId)) : [undefined];
 
+    // Per-shift number for guest-facing display.
+    const periods = await computeShiftPeriods();
+    const shiftNumberById = new Map<number, number | null>();
+    for (const o of orders) {
+      const t = new Date(o.createdAt).getTime();
+      const idx = findShiftPeriodIdx(periods, t);
+      if (idx === -1) { shiftNumberById.set(o.id, null); continue; }
+      const period = periods[idx]!;
+      const periodStart = new Date(period.start);
+      const sameOrEarlier = await db
+        .select({ id: ordersTable.id })
+        .from(ordersTable)
+        .where(and(gte(ordersTable.createdAt, periodStart), lte(ordersTable.createdAt, new Date(o.createdAt))));
+      shiftNumberById.set(o.id, sameOrEarlier.length);
+    }
+
     const result = orders.map((order) => ({
       ...order,
+      shiftNumber: shiftNumberById.get(order.id) ?? null,
       tableName: table?.name ?? "",
       totalAmount: Number(order.totalAmount),
       discount: Number(order.discount),
@@ -555,7 +708,8 @@ router.get("/orders/table/:tableToken", async (req, res) => {
 
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 

@@ -8,12 +8,14 @@ import {
   useGetOrders, useGetTables, useGetMenuCategories, useUpdateOrderStatus,
   useGetTableQr, useGetReportSummary, useUpdateMenuItem, useDeleteMenuItem,
   useCreateMenuCategory, useCreateMenuItem, useCreateOrder, useCreateTable,
-  getGetOrdersQueryKey, getGetMenuCategoriesQueryKey, getGetTablesQueryKey,
+  getGetOrdersQueryKey, getGetMenuCategoriesQueryKey, getGetTablesQueryKey, getGetTableQrQueryKey,
   customFetch,
   type Order, type Table,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
+import { orderDisplayNumber } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/use-confirm";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -22,7 +24,7 @@ import {
   Wifi, WifiOff, TableProperties, Banknote, ArrowRight,
   CalendarDays, Download, Pencil, Users,
   Minus, Search, Building2, UserCheck, UserX, View,
-  Upload, Package, Bell, AlertTriangle,
+  Upload, Package, Bell, AlertTriangle, RefreshCw,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
@@ -92,7 +94,7 @@ function ImageUploadField({ value, onChange, label }: { value: string; onChange:
       {label && <label className="text-sm font-medium">{label}</label>}
       {value && (
         <div className="relative w-full h-32 rounded-xl overflow-hidden border border-border">
-          <img src={value} alt="Preview" className="w-full h-full object-cover" />
+          <img src={value} alt="Урьдчилан харах" className="w-full h-full object-cover" />
           <button onClick={() => onChange("")} className="absolute top-2 right-2 bg-black/60 rounded-full p-1 text-white hover:bg-black/80">
             <X size={14} />
           </button>
@@ -199,8 +201,8 @@ function PaymentModal({ orders, pendingSiblings, onConfirm, onClose }: {
             <h2 className="font-bold text-lg">{t("payment")} · {primary.tableName}</h2>
             <p className="text-sm text-muted-foreground">
               {orders.length > 1
-                ? `${orders.length} захиалга: ${orders.map(o => `#${o.id}`).join(", ")}`
-                : `Захиалга #${primary.id}`}
+                ? `${orders.length} захиалга: ${orders.map(o => `#${orderDisplayNumber(o)}`).join(", ")}`
+                : `Захиалга #${orderDisplayNumber(primary)}`}
             </p>
           </div>
           <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted/50">
@@ -214,7 +216,7 @@ function PaymentModal({ orders, pendingSiblings, onConfirm, onClose }: {
             <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
             <div>
               Энэ ширээн дээр бэлтгэгдэж буй захиалга байна (
-              {pendingSiblings.map(o => `#${o.id}`).join(", ")}
+              {pendingSiblings.map(o => `#${orderDisplayNumber(o)}`).join(", ")}
               ). Тооцоонд ороогүй — бэлэн болсны дараа тусад нь авна.
             </div>
           </div>
@@ -226,7 +228,7 @@ function PaymentModal({ orders, pendingSiblings, onConfirm, onClose }: {
             <div key={o.id} className="space-y-2">
               {orders.length > 1 && (
                 <div className="flex items-center justify-between text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                  <span>Захиалга #{o.id}</span>
+                  <span>Захиалга #{orderDisplayNumber(o)}</span>
                   <span>₮{Number(o.totalAmount).toLocaleString()}</span>
                 </div>
               )}
@@ -400,7 +402,7 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
           <div>
             <h2 className="font-bold text-lg">{t("order_history")}</h2>
             <p className="text-sm text-muted-foreground">
-              Захиалга #{order.id} · {order.tableName}
+              Захиалга #{orderDisplayNumber(order)} · {order.tableName}
             </p>
           </div>
           <button
@@ -672,6 +674,7 @@ function MyShiftPanel() {
 
 function LogoutButton({ role, onLoggedOut }: { role: string; onLoggedOut: () => void }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const { data: me } = useQuery<{ openShift: ShiftRow | null; recent: ShiftRow[] }>({
     queryKey: ["shifts-me"],
@@ -686,7 +689,8 @@ function LogoutButton({ role, onLoggedOut }: { role: string; onLoggedOut: () => 
     setBusy(true);
     try {
       if (!isManager && hasOpenShift) {
-        if (!confirm("Ээлж дуусгаад гарах уу?")) { setBusy(false); return; }
+        const ok = await confirm({ title: "Ээлж дуусгаад гарах уу?", confirmLabel: "Тийм", cancelLabel: "Үгүй" });
+        if (!ok) { setBusy(false); return; }
         try {
           await customFetch("/api/shifts/clock-out", { method: "POST", body: JSON.stringify({}) });
           toast({ title: "Ээлж дууслаа" });
@@ -732,6 +736,7 @@ function StaffAndShiftsView({ role, meId }: { role: string; meId: number }) {
 
 function ManagerStaffList({ meId }: { meId: number }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const { data: users, isLoading } = useQuery<StaffUser[]>({
     queryKey: ["users"],
@@ -790,7 +795,7 @@ function ManagerStaffList({ meId }: { meId: number }) {
                       <Pencil size={14} />
                     </button>
                     {u.id !== meId && (
-                      <button onClick={() => { if (confirm(`"${u.name}"-г устгах уу?`)) del.mutate(u.id); }}
+                      <button onClick={async () => { if (await confirm({ title: `"${u.name}"-г устгах уу?`, destructive: true, confirmLabel: "Устгах" })) del.mutate(u.id); }}
                         className="p-2 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400">
                         <Trash2 size={14} />
                       </button>
@@ -958,13 +963,16 @@ function OrdersView({ role }: { role: string }) {
   const isChef = role === "chef";
   const isManager = role === "manager";
   const { data: orders, isLoading } = useGetOrders();
+  const { data: tablesData } = useGetTables();
   const updateStatus = useUpdateOrderStatus();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [payingOrder, setPayingOrder] = useState<Order | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   // Chef only sees preparing orders
   const active = orders?.filter((o) => {
@@ -990,7 +998,7 @@ function OrdersView({ role }: { role: string }) {
     return map;
   })();
 
-  const done = orders?.filter((o) => o.status === "paid").slice(0, 5) ?? [];
+  const paidOrders = orders?.filter((o) => o.status === "paid") ?? [];
 
   const handle = (orderId: number, status: string) => {
     updateStatus.mutate(
@@ -1007,7 +1015,7 @@ function OrdersView({ role }: { role: string }) {
 
   const handleSendToKitchen = (order: Order) => {
     handle(order.id, "preparing");
-    toast({ title: `Захиалга #${order.id} — гал тогоонд илгээгдлээ` });
+    toast({ title: `Захиалга #${orderDisplayNumber(order)} — гал тогоонд илгээгдлээ` });
   };
 
   const handlePaymentConfirm = async (ordersToPay: Order[]) => {
@@ -1022,7 +1030,7 @@ function OrdersView({ role }: { role: string }) {
       setPayingOrder(null);
       const label =
         ordersToPay.length > 1
-          ? `${ordersToPay.length} захиалга (${ordersToPay.map(o => `#${o.id}`).join(", ")})`
+          ? `${ordersToPay.length} захиалга (${ordersToPay.map(o => `#${orderDisplayNumber(o)}`).join(", ")})`
           : `Захиалга #${ordersToPay[0]!.id}`;
       toast({ title: `${label} — төлбөр амжилттай авлаа ✓` });
     } catch (err: any) {
@@ -1033,11 +1041,12 @@ function OrdersView({ role }: { role: string }) {
 
   const handleCancel = (order: Order) => {
     handle(order.id, "cancelled");
-    toast({ title: `Захиалга #${order.id} цуцлагдлаа`, variant: "destructive" });
+    toast({ title: `Захиалга #${orderDisplayNumber(order)} цуцлагдлаа`, variant: "destructive" });
   };
 
   const handleVoidItem = async (orderId: number, itemId: number) => {
-    if (!confirm("Энэ хоолыг захиалгаас хасах уу?")) return;
+    const ok = await confirm({ title: "Энэ хоолыг захиалгаас хасах уу?", destructive: true, confirmLabel: "Хасах" });
+    if (!ok) return;
     try {
       await customFetch(`/api/orders/${orderId}/items/${itemId}`, { method: "DELETE" });
       queryClient.invalidateQueries({ queryKey: getGetOrdersQueryKey() });
@@ -1113,7 +1122,11 @@ function OrdersView({ role }: { role: string }) {
       {createOpen && (
         <CreateOrderModal
           onClose={() => setCreateOpen(false)}
-          onDone={() => { setCreateOpen(false); queryClient.invalidateQueries({ queryKey: getGetOrdersQueryKey() }); }}
+          onDone={() => {
+            setCreateOpen(false);
+            queryClient.invalidateQueries({ queryKey: getGetOrdersQueryKey() });
+            queryClient.invalidateQueries({ queryKey: getGetTablesQueryKey() });
+          }}
         />
       )}
 
@@ -1228,28 +1241,160 @@ function OrdersView({ role }: { role: string }) {
           )}
         </div>
 
-        {/* Recently done */}
-        {done.length > 0 && (
+        {/* History trigger */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            className="w-full flex items-center justify-between px-5 py-4 bg-card border border-border rounded-xl hover:border-primary/40 transition text-left"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center">
+                <Clock size={16} className="text-primary" />
+              </div>
+              <div>
+                <div className="font-semibold text-sm">Захиалгын түүх</div>
+                <div className="text-xs text-muted-foreground">{paidOrders.length} төлөгдсөн захиалга — хугацаа, ширээгээр шүүх</div>
+              </div>
+            </div>
+            <ArrowRight size={16} className="text-muted-foreground" />
+          </button>
+        </div>
+      </div>
+
+      {historyOpen && (
+        <OrderHistoryModal
+          orders={paidOrders}
+          tables={tablesData ?? []}
+          onClose={() => setHistoryOpen(false)}
+          onPickOrder={(order) => { setHistoryOpen(false); setDetailOrder(order); }}
+        />
+      )}
+    </>
+  );
+}
+
+function OrderHistoryModal({ orders, tables, onClose, onPickOrder }: {
+  orders: Order[];
+  tables: Table[];
+  onClose: () => void;
+  onPickOrder: (order: Order) => void;
+}) {
+  const [from, setFrom] = useState<string>("");
+  const [to, setTo] = useState<string>("");
+  const [tableId, setTableId] = useState<string>("all");
+
+  const filtered = orders
+    .filter((o) => {
+      if (tableId !== "all" && o.tableId !== Number(tableId)) return false;
+      const ts = new Date(o.createdAt).getTime();
+      if (from) {
+        const fromTs = new Date(`${from}T00:00:00`).getTime();
+        if (ts < fromTs) return false;
+      }
+      if (to) {
+        const toTs = new Date(`${to}T23:59:59.999`).getTime();
+        if (ts > toTs) return false;
+      }
+      return true;
+    })
+    .slice()
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const total = filtered.reduce((s, o) => s + Number(o.totalAmount), 0);
+  const hasFilters = from !== "" || to !== "" || tableId !== "all";
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center">
+              <Clock size={16} className="text-primary" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold">Захиалгын түүх</h3>
+              <p className="text-xs text-muted-foreground">Төлөгдсөн бүх захиалга</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-lg"><X size={18} /></button>
+        </div>
+
+        <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 border-b border-border bg-background/40">
           <div>
-            <h3 className="text-base font-semibold text-muted-foreground mb-3">Саяхан дууссан</h3>
+            <label className="text-xs text-muted-foreground mb-1 block">Эхлэх огноо</label>
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary/40"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Дуусах огноо</label>
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary/40"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Ширээ</label>
+            <select
+              value={tableId}
+              onChange={(e) => setTableId(e.target.value)}
+              className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary/40"
+            >
+              <option value="all">Бүх ширээ</option>
+              {tables.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+          {hasFilters && (
+            <div className="sm:col-span-3 flex justify-end">
+              <button
+                onClick={() => { setFrom(""); setTo(""); setTableId("all"); }}
+                className="text-xs text-muted-foreground hover:text-foreground transition"
+              >
+                Шүүлтүүр цэвэрлэх
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {filtered.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <ShoppingBag size={36} className="mx-auto mb-3 opacity-30" />
+              <p className="text-sm">Захиалга олдсонгүй</p>
+            </div>
+          ) : (
             <div className="space-y-2">
-              {done.map((order) => (
+              {filtered.map((order) => (
                 <button
                   key={order.id}
                   type="button"
-                  onClick={() => setDetailOrder(order)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-card border border-border rounded-xl text-sm opacity-70 hover:opacity-100 hover:border-primary/40 transition text-left"
+                  onClick={() => onPickOrder(order)}
+                  className="w-full grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 px-4 py-3 bg-background/40 border border-border rounded-xl hover:border-primary/40 transition text-left text-sm"
                 >
-                  <span className="text-muted-foreground">#{order.id} · {order.tableName}</span>
-                  <span className="text-muted-foreground">{format(new Date(order.createdAt), "HH:mm")}</span>
+                  <span className="font-semibold">#{order.id}</span>
+                  <span className="text-muted-foreground truncate">{order.tableName}</span>
+                  <span className="text-muted-foreground text-xs">{format(new Date(order.createdAt), "yyyy-MM-dd HH:mm")}</span>
                   <span className="font-bold">₮{Number(order.totalAmount).toLocaleString()}</span>
                 </button>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
+
+        <div className="p-3 border-t border-border bg-background/40 flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">{filtered.length} захиалга</span>
+          <span className="font-bold">Нийт: ₮{total.toLocaleString()}</span>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -1294,7 +1439,14 @@ function CreateOrderModal({ onClose, onDone }: { onClose: () => void; onDone: ()
   const total = cartItems.reduce((s, i) => s + i.price * i.qty, 0);
 
   const handleSubmit = () => {
-    if (!selectedTable?.qrToken || cartItems.length === 0) return;
+    if (!selectedTable?.qrToken) {
+      toast({ title: "Ширээ сонгоно уу", variant: "destructive" });
+      return;
+    }
+    if (cartItems.length === 0) {
+      toast({ title: "Хоол сонгоно уу", description: "Сагсанд ядаж нэг хоол байх ёстой.", variant: "destructive" });
+      return;
+    }
     createOrder.mutate(
       { data: { tableToken: selectedTable.qrToken, items: cartItems.map(i => ({ menuItemId: i.id, quantity: i.qty })) } },
       {
@@ -1683,6 +1835,7 @@ function MenuManagement() {
   const createCat = useCreateMenuCategory();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [newCatName, setNewCatName] = useState("");
   const [showNewCat, setShowNewCat] = useState(false);
   const [newSubCatName, setNewSubCatName] = useState("");
@@ -1714,8 +1867,9 @@ function MenuManagement() {
     );
   };
 
-  const handleDeleteItem = (itemId: number, name: string) => {
-    if (!confirm(`"${name}" устгах уу?`)) return;
+  const handleDeleteItem = async (itemId: number, name: string) => {
+    const ok = await confirm({ title: `"${name}" устгах уу?`, destructive: true, confirmLabel: "Устгах" });
+    if (!ok) return;
     deleteItem.mutate(
       { itemId },
       { onSuccess: () => { refreshMenu(); toast({ title: "Устгасан" }); } }
@@ -1739,7 +1893,8 @@ function MenuManagement() {
   };
 
   const handleDeleteCat = async (catId: number, catName: string) => {
-    if (!confirm(`"${catName}" ангилалыг устгах уу?`)) return;
+    const ok = await confirm({ title: `"${catName}" ангилалыг устгах уу?`, destructive: true, confirmLabel: "Устгах" });
+    if (!ok) return;
     try {
       const res = await customFetch(`/api/menu/categories/${catId}`, { method: "DELETE" });
       if (res && (res as any).error) {
@@ -1950,6 +2105,7 @@ function useInventory() {
 function InventoryView() {
   const { data, isLoading, refetch } = useInventory();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
 
@@ -2018,7 +2174,8 @@ function InventoryView() {
                       </button>
                       <button
                         onClick={async () => {
-                          if (!confirm(`"${item.name}" устгах уу?`)) return;
+                          const ok = await confirm({ title: `"${item.name}" устгах уу?`, destructive: true, confirmLabel: "Устгах" });
+                          if (!ok) return;
                           try {
                             await customFetch(`/api/inventory/${item.id}`, { method: "DELETE" });
                             toast({ title: "Бараа устгагдлаа" });
@@ -2178,9 +2335,10 @@ type NotificationRow = {
 function NotificationBell() {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
-  const { data } = useQuery<NotificationRow[]>({
+  const confirm = useConfirm();
+  const { data } = useQuery<{ items: NotificationRow[]; nextCursor: string | null }>({
     queryKey: ["notifications"],
-    queryFn: () => customFetch<NotificationRow[]>("/api/notifications"),
+    queryFn: () => customFetch<{ items: NotificationRow[]; nextCursor: string | null }>("/api/notifications"),
     refetchInterval: 30000,
   });
 
@@ -2190,7 +2348,7 @@ function NotificationBell() {
     return () => { socket.off("notification:new", onNew); };
   }, [queryClient]);
 
-  const items = data ?? [];
+  const items = data?.items ?? [];
   const unread = items.filter(n => !n.read).length;
 
   const markAllRead = async () => {
@@ -2199,7 +2357,8 @@ function NotificationBell() {
   };
 
   const clearAll = async () => {
-    if (!confirm("Бүх мэдэгдлийг устгах уу?")) return;
+    const ok = await confirm({ title: "Бүх мэдэгдлийг устгах уу?", destructive: true, confirmLabel: "Устгах" });
+    if (!ok) return;
     await customFetch("/api/notifications", { method: "DELETE" });
     queryClient.invalidateQueries({ queryKey: ["notifications"] });
   };
@@ -2439,6 +2598,7 @@ function TablesView() {
   const createTable = useCreateTable();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [qrTableId, setQrTableId] = useState<number | null>(null);
   const { data: qrData } = useGetTableQr(qrTableId ?? 0, { query: { enabled: !!qrTableId } } as any);
   const [showAdd, setShowAdd] = useState(false);
@@ -2483,10 +2643,29 @@ function TablesView() {
   };
 
   const handleDelete = async (table: Table) => {
-    if (!confirm(`"${table.name}" устгах уу? Ширээний бүх захиалга устана.`)) return;
+    const ok = await confirm({ title: `"${table.name}" устгах уу?`, description: "Ширээний бүх захиалга устана.", destructive: true, confirmLabel: "Устгах" });
+    if (!ok) return;
     await customFetch(`/api/tables/${table.id}`, { method: "DELETE" });
     refresh();
     toast({ title: "Устгасан" });
+  };
+
+  const handleRotateQr = async (table: Table) => {
+    const ok = await confirm({
+      title: `${table.name} — QR сэргээх үү?`,
+      description: "Хуучин QR болон session token шууд хүчингүй болно. Хэрэв QR хэвлэгдсэн бол дахин хэвлэх шаардлагатай.",
+      destructive: true,
+      confirmLabel: "Сэргээх",
+    });
+    if (!ok) return;
+    try {
+      await customFetch(`/api/tables/${table.id}/rotate-qr`, { method: "POST" });
+      queryClient.invalidateQueries({ queryKey: getGetTableQrQueryKey(table.id) });
+      refresh();
+      toast({ title: `${table.name} — QR сэргээгдлээ` });
+    } catch {
+      toast({ title: "QR сэргээхэд алдаа гарлаа", variant: "destructive" });
+    }
   };
 
   const handleToggleSession = async (table: Table) => {
@@ -2625,9 +2804,14 @@ function TablesView() {
                       <QRCodeSVG value={qrData.url} size={110} />
                     </div>
                     <p className="text-[10px] text-muted-foreground text-center break-all leading-relaxed">{qrData.url}</p>
-                    <Button size="sm" variant="outline" className="w-full" onClick={() => printQR(table, qrData.url)}>
-                      <Printer size={12} className="mr-1" /> QR хэвлэх
-                    </Button>
+                    <div className="flex gap-2 w-full">
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => printQR(table, qrData.url)}>
+                        <Printer size={12} className="mr-1" /> Хэвлэх
+                      </Button>
+                      <Button size="sm" variant="outline" className="flex-1 text-orange-400 border-orange-500/30 hover:bg-orange-500/10" onClick={() => handleRotateQr(table)}>
+                        <RefreshCw size={12} className="mr-1" /> Сэргээх
+                      </Button>
+                    </div>
                   </div>
                 )}
               </>
@@ -2811,10 +2995,12 @@ function ReviewsManagement() {
         {sortedReviews.map((r: any) => (
           <div key={r.id} className="bg-card border border-border rounded-2xl p-4">
             <div className="flex items-center gap-2">
-              <p className="font-medium text-sm">{r.name}</p>
+              <p className="font-medium text-sm">{r.name?.trim() || <span className="italic text-muted-foreground">Нэргүй</span>}</p>
               <span className="text-yellow-400 text-sm">{stars(r.rating)}</span>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5"><Phone size={10} className="inline mr-1" />{r.phone}</p>
+            {r.phone?.trim() && (
+              <p className="text-xs text-muted-foreground mt-0.5"><Phone size={10} className="inline mr-1" />{r.phone}</p>
+            )}
             <p className="text-sm mt-2">{r.comment}</p>
             <p className="text-xs text-muted-foreground mt-1">{r.createdAt ? format(new Date(r.createdAt), "yyyy-MM-dd HH:mm") : ""}</p>
           </div>
@@ -2976,7 +3162,14 @@ function ReservationsManagement() {
   const [resNotes, setResNotes] = useState("");
 
   const createReservation = useMutation({
-    mutationFn: (data: any) => fetch("/api/reservations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json(); }),
+    mutationFn: async (data: any) => {
+      const r = await fetch("/api/reservations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!r.ok) {
+        const text = await r.text().catch(() => "");
+        throw new Error(text || r.statusText || `Request failed (${r.status})`);
+      }
+      return r.json();
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reservations"] });
       setShowAdd(false);

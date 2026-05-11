@@ -4,8 +4,8 @@ import { z } from "zod/v4";
 
 export const reviewsTable = pgTable("reviews", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  phone: text("phone").notNull(),
+  name: text("name"),
+  phone: text("phone"),
   rating: integer("rating").notNull(),
   comment: text("comment").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

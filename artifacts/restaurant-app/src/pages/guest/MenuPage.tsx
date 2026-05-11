@@ -125,6 +125,10 @@ function GuestMenuContent({ token }: { token: string }) {
   const { connected } = useGuestRealtime(token);
   const customerId = useStore((s) => s.customerId);
   const setCustomerId = useStore((s) => s.setCustomerId);
+  const sessionToken = useStore((s) => s.sessionToken);
+  const sessionTableToken = useStore((s) => s.sessionTableToken);
+  const setSession = useStore((s) => s.setSession);
+  const clearSession = useStore((s) => s.clearSession);
   const [checkinError, setCheckinError] = useState<string | null>(null);
   const [checkedIn, setCheckedIn] = useState(false);
   const name = settings?.restaurantName || "Ресторан";
@@ -142,6 +146,12 @@ function GuestMenuContent({ token }: { token: string }) {
   useEffect(() => {
     if (!customerId || !session?.valid) return;
     if ((session as any).tableStatus !== "occupied") return;
+    // Reuse an existing session JWT if we already checked into this exact QR token
+    if (sessionToken && sessionTableToken === token) {
+      setCheckinError(null);
+      setCheckedIn(true);
+      return;
+    }
     setCheckinError(null);
     fetch(`/api/tables/${token}/checkin`, {
       method: "POST",
@@ -151,13 +161,15 @@ function GuestMenuContent({ token }: { token: string }) {
       .then(async (r) => {
         const data = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(data?.message || "Холболт амжилтгүй");
+        if (data?.sessionToken) setSession(data.sessionToken, token);
         setCheckedIn(true);
       })
       .catch((err) => {
+        clearSession();
         setCheckedIn(false);
         setCheckinError(err.message || "Холболт амжилтгүй");
       });
-  }, [customerId, token, session]);
+  }, [customerId, token, session, sessionToken, sessionTableToken, setSession, clearSession]);
 
   if (sessionLoading) {
     return <div className="min-h-screen bg-background flex items-center justify-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
@@ -183,7 +195,7 @@ function GuestMenuContent({ token }: { token: string }) {
           </div>
           <h1 className="text-2xl font-display font-bold">Ширээ идэвхжээгүй</h1>
           <p className="text-muted-foreground text-lg">Захиалга өгөхийн тулд үйлчлэгчид хандаж ширээгээ идэвхжүүлнэ үү.</p>
-          <p className="text-sm text-muted-foreground/60">{session.tableName}</p>
+          <p className="text-2xl font-display font-bold text-primary">{session.tableName}</p>
         </div>
       </div>
     );
@@ -263,7 +275,7 @@ function GuestHeader({ name, tableName, view, setView, connected, settings, hasO
           </div>
           <div>
             <h1 className="font-display font-bold leading-tight text-sm">{name}</h1>
-            <p className="text-[10px] text-primary font-bold uppercase tracking-widest">{tableName}</p>
+            <p className="text-lg text-primary font-bold uppercase tracking-wider leading-tight">{tableName}</p>
           </div>
         </div>
 
@@ -303,7 +315,7 @@ function BannerCarousel() {
   if (items.length === 0) {
     return (
       <div className="relative h-40 md:h-56">
-        <img src={`${import.meta.env.BASE_URL}images/hero-bg.png`} alt="Restaurant" className="w-full h-full object-cover" />
+        <img src={`${import.meta.env.BASE_URL}images/hero-bg.png`} alt="Ресторан" className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
         <div className="absolute bottom-5 left-6 pr-6">
           <h2 className="text-2xl md:text-3xl font-display font-bold text-white mb-1">Амтыг мэдрэ</h2>
@@ -318,7 +330,7 @@ function BannerCarousel() {
         <motion.img
           key={items[current]?.id}
           src={items[current]?.imageUrl}
-          alt={items[current]?.title || "Banner"}
+          alt={items[current]?.title || "Зар"}
           className="w-full h-full object-cover absolute inset-0"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -354,7 +366,7 @@ function MenuSection() {
   const [selectedCatId, setSelectedCatId] = useState<number | null>(null);
   const [expandedSubs, setExpandedSubs] = useState<Set<number>>(new Set());
 
-  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading menu...</div>;
+  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Цэс ачааллаж байна...</div>;
 
   const cats = (categories ?? []) as Array<any>;
   const activeCatId = selectedCatId ?? cats[0]?.id ?? null;
@@ -535,16 +547,17 @@ function ARViewerModal({ modelUrl, itemName, onClose }: { modelUrl: string; item
             alt={`${itemName} 3D загвар`}
             ar
             ar-modes="webxr scene-viewer quick-look"
-            ar-scale="fixed"
+            ar-scale="auto"
             ar-placement="floor"
             camera-controls
             touch-action="pan-y"
             auto-rotate
             shadow-intensity="1"
-            scale="0.0036 0.0036 0.0036"
-            min-camera-orbit="auto auto 0.005m"
-            max-camera-orbit="auto auto 0.3m"
-            camera-orbit="0deg 75deg 0.02m"
+            scale="0.000435 0.000435 0.000435"
+            bounds="tight"
+            min-camera-orbit="auto auto 0.003m"
+            max-camera-orbit="auto auto 0.15m"
+            camera-orbit="0deg 75deg 0.015m"
             style={{ width: "100%", height: "100%", minHeight: "300px" }}
           >
             <button slot="ar-button" className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-primary text-white px-6 py-3 rounded-2xl font-bold shadow-xl shadow-primary/30 flex items-center gap-2 text-sm">
@@ -554,7 +567,7 @@ function ARViewerModal({ modelUrl, itemName, onClose }: { modelUrl: string; item
           </model-viewer>
         </div>
         <div className="p-4 border-t border-white/5 bg-background/50">
-          <p className="text-xs text-muted-foreground text-center">Гар хурууаар эргүүлж, томруулж харна уу. "AR-аар харах" дарж ширээн дээрээ байрлуулна уу.</p>
+          <p className="text-xs text-muted-foreground text-center">Гар хурууаар эргүүлж, томруулж харна уу. "AR-аар харах" дарж ширээн дээрээ байрлуулаад хэмжээг нь хоёр хуруугаар pinch хийж тохируулна уу.</p>
         </div>
       </motion.div>
     </>
@@ -589,6 +602,8 @@ function CartFloatButton({ onClick }: { onClick: () => void }) {
 
 function CartDrawer({ token, customerId, onClose, onOrderSuccess }: { token: string; customerId: string | null; onClose: () => void; onOrderSuccess: () => void }) {
   const { cart, updateQuantity, removeFromCart, clearCart, setItemNotes } = useStore();
+  const sessionToken = useStore((s) => s.sessionToken);
+  const clearSession = useStore((s) => s.clearSession);
   const createOrder = useCreateOrder();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -602,10 +617,15 @@ function CartDrawer({ token, customerId, onClose, onOrderSuccess }: { token: str
       toast({ title: "Алдаа", description: "Зочны бүртгэл олдсонгүй. Хуудсаа дахин сэргээнэ үү.", variant: "destructive" });
       return;
     }
+    if (!sessionToken) {
+      toast({ title: "Session дууссан", description: "Захиалга өгөхийн тулд үйлчлэгчид хандана уу.", variant: "destructive" });
+      return;
+    }
     createOrder.mutate({
       data: {
         tableToken: token,
         customerId,
+        sessionToken,
         items: cart.map(i => ({ menuItemId: i.menuItem.id, quantity: i.quantity, notes: i.notes })),
         paymentMethod,
         notes: orderNotes || undefined,
@@ -619,7 +639,14 @@ function CartDrawer({ token, customerId, onClose, onOrderSuccess }: { token: str
         onOrderSuccess();
       },
       onError: (err: any) => {
+        const status = err?.response?.status;
+        const code = err?.response?.data?.error;
         const msg = err?.response?.data?.message || err?.message || "Захиалга явуулж чадсангүй.";
+        if (status === 401 || code === "session_ended" || code === "invalid_session_token" || code === "missing_session_token") {
+          clearSession();
+          toast({ title: "Session хүчингүй", description: "QR кодыг дахин уншуулна уу.", variant: "destructive" });
+          return;
+        }
         toast({ title: "Алдаа", description: msg, variant: "destructive" });
       }
     });
@@ -859,8 +886,8 @@ function ReviewsSection() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !phone || !comment) {
-      toast({ title: "Алдаа", description: "Бүх талбарыг бөглөнө үү", variant: "destructive" });
+    if (!comment.trim()) {
+      toast({ title: "Алдаа", description: "Сэтгэгдэл бичнэ үү", variant: "destructive" });
       return;
     }
     submitReview.mutate({ name, phone, rating, comment }, {
@@ -898,9 +925,9 @@ function ReviewsSection() {
             onSubmit={handleSubmit}
           >
             <div className="bg-card rounded-2xl p-5 border border-white/5 shadow-xl space-y-4">
-              <input type="text" placeholder="Таны нэр" value={name} onChange={e => setName(e.target.value)}
+              <input type="text" placeholder="Таны нэр (заавал биш)" value={name} onChange={e => setName(e.target.value)}
                 className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary/50" />
-              <input type="tel" placeholder="Утасны дугаар" value={phone} onChange={e => setPhone(e.target.value)}
+              <input type="tel" placeholder="Утасны дугаар (заавал биш)" value={phone} onChange={e => setPhone(e.target.value)}
                 className="w-full bg-background border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary/50" />
               <div>
                 <p className="text-sm text-muted-foreground mb-2">Үнэлгээ</p>
@@ -954,6 +981,7 @@ function ReviewsSection() {
 /* ─── Footer ─── */
 
 function ReservationBooking({ restaurantName }: { restaurantName: string }) {
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -961,11 +989,18 @@ function ReservationBooking({ restaurantName }: { restaurantName: string }) {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("18:00");
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const handleSubmit = async () => {
-    if (!name || !phone || !date) return;
+    if (!name || !phone || !date) {
+      const msg = "Нэр, утасны дугаар, огноо шаардлагатай";
+      setError(msg);
+      toast({ title: "Талбарууд дутуу", description: msg, variant: "destructive" });
+      return;
+    }
     setError("");
+    setSubmitting(true);
     try {
       const res = await fetch("/api/reservations", {
         method: "POST",
@@ -977,13 +1012,20 @@ function ReservationBooking({ restaurantName }: { restaurantName: string }) {
         }),
       });
       if (!res.ok) {
-        const data = await res.json();
-        setError(data.message || "Алдаа гарлаа");
+        const data = await res.json().catch(() => ({}));
+        const msg = data.message || "Захиалга илгээхэд алдаа гарлаа";
+        setError(msg);
+        toast({ title: "Алдаа", description: msg, variant: "destructive" });
         return;
       }
       setSubmitted(true);
+      toast({ title: "Амжилттай", description: "Захиалга бүртгэгдлээ" });
     } catch {
-      setError("Алдаа гарлаа");
+      const msg = "Сүлжээний алдаа. Дахин оролдоно уу.";
+      setError(msg);
+      toast({ title: "Алдаа", description: msg, variant: "destructive" });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -1023,9 +1065,9 @@ function ReservationBooking({ restaurantName }: { restaurantName: string }) {
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
       <div className="flex gap-2">
-        <button onClick={handleSubmit} disabled={!name || !phone || !date}
+        <button onClick={handleSubmit} disabled={!name || !phone || !date || submitting}
           className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl font-bold text-sm disabled:opacity-50">
-          Захиалах
+          {submitting ? "Илгээж байна..." : "Захиалах"}
         </button>
         <button onClick={() => setOpen(false)}
           className="px-4 py-2.5 border border-white/10 rounded-xl text-sm text-muted-foreground hover:text-foreground">

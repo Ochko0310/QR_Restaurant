@@ -23,7 +23,7 @@ export default function StaffLoginPage() {
         setLocation("/staff");
       },
       onError: (err: any) => {
-        toast({ title: "Login Failed", description: err?.message || "Invalid credentials", variant: "destructive" });
+        toast({ title: "Нэвтрэлт амжилтгүй", description: err?.message || "Буруу мэдээлэл", variant: "destructive" });
       }
     });
   };
@@ -44,8 +44,8 @@ export default function StaffLoginPage() {
         </div>
         
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-display font-bold text-foreground">L'Aura Staff</h1>
-          <p className="text-muted-foreground mt-2">Sign in to manage operations</p>
+          <h1 className="text-3xl font-display font-bold text-foreground">L'Aura Ажилтан</h1>
+          <p className="text-muted-foreground mt-2">Үйл ажиллагаагаа удирдахын тулд нэвтэрнэ үү</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-5">
@@ -54,7 +54,7 @@ export default function StaffLoginPage() {
               <UserIcon className="absolute left-3 top-3 text-muted-foreground" size={18} />
               <Input 
                 type="text" 
-                placeholder="Username" 
+                placeholder="Хэрэглэгчийн нэр"
                 value={username} 
                 onChange={e => setUsername(e.target.value)}
                 className="pl-10 h-12 bg-background border-white/10 rounded-xl focus:border-primary focus:ring-primary/20 text-foreground"
@@ -68,7 +68,7 @@ export default function StaffLoginPage() {
               <Lock className="absolute left-3 top-3 text-muted-foreground" size={18} />
               <Input 
                 type="password" 
-                placeholder="Password" 
+                placeholder="Нууц үг"
                 value={password} 
                 onChange={e => setPassword(e.target.value)}
                 className="pl-10 h-12 bg-background border-white/10 rounded-xl focus:border-primary focus:ring-primary/20 text-foreground"
@@ -82,12 +82,12 @@ export default function StaffLoginPage() {
             disabled={login.isPending}
             className="w-full h-12 text-lg font-bold rounded-xl shadow-lg shadow-primary/20 hover:-translate-y-0.5 transition-transform"
           >
-            {login.isPending ? "Authenticating..." : "Sign In"}
+            {login.isPending ? "Нэвтэрч байна..." : "Нэвтрэх"}
           </Button>
         </form>
 
         <div className="mt-8 pt-6 border-t border-white/5">
-          <p className="text-xs text-muted-foreground text-center mb-3 font-semibold uppercase tracking-widest">Demo Accounts</p>
+          <p className="text-xs text-muted-foreground text-center mb-3 font-semibold uppercase tracking-widest">Туршилтын бүртгэл</p>
           <div className="grid grid-cols-1 gap-2 text-xs font-mono bg-background/50 p-3 rounded-xl border border-white/5">
             <button
               type="button"

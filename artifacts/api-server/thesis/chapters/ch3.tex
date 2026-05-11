@@ -228,10 +228,14 @@ middleware дундуур Drizzle repository-г дуудаж, PostgreSQL-той 
 
 \subsection{ER диаграм}
 
-Системийн өгөгдлийн сан нь 9 үндсэн хүснэгтээс бүрдэх бөгөөд (Хүснэгт~\ref{tab:dbtables})
+Системийн өгөгдлийн сан нь 11 үндсэн хүснэгтээс бүрдэх бөгөөд (Хүснэгт~\ref{tab:dbtables})
 хоорондын холбоог Зураг~\ref{fig:er} дээр харуулав. Нэмэлтээр нөөц (\texttt{inventory\_items}),
 зочны хамт олны session (\texttt{table\_sessions}), сэтгэгдэл (\texttt{feedback})
-хүснэгтүүд системийн өргөтгөсөн функцтэй холбоотой.
+хүснэгтүүд системийн өргөтгөсөн функцтэй холбоотой. QR архитектурын шинэчлэлийн
+хүрээнд нэг ширээнд олон төхөөрөмж нэгэн зэрэг холбогдох боломжийг
+\texttt{session\_participants} junction хүснэгт олгож, бүх төхөөрөмжид нэг
+ерөнхий сагсыг real-time байдлаар тусгахыг \texttt{shared\_cart\_items} хүснэгт
+гүйцэтгэдэг (Бүлэг~\ref{sec:qr-redesign}).
 
 \begin{table}[htbp]
 \caption{Өгөгдлийн сангийн үндсэн хүснэгтүүдийн жагсаалт}
@@ -257,6 +261,9 @@ middleware дундуур Drizzle repository-г дуудаж, PostgreSQL-той 
 \rowcolor{LightBlue}
 \texttt{order\_items} & Захиалгын мөрүүд & 600--4000/өдөр \\ \hline
 \texttt{feedback} & Зочны үнэлгээ, сэтгэгдэл & 30--150/өдөр \\ \hline
+\rowcolor{LightBlue}
+\texttt{session\_participants} & Session-д холбогдсон зочдын junction & 100--1500/өдөр \\ \hline
+\texttt{shared\_cart\_items} & Олон төхөөрөмжийн хамтын сагсны мөрүүд & 50--800/өдөр \\ \hline
 \end{tabularx}
 \end{table}
 
@@ -513,6 +520,35 @@ CREATE TABLE feedback (
   comment    TEXT,
   created_at TIMESTAMP DEFAULT NOW(),
   read_at    TIMESTAMP
+);
+\end{lstlisting}
+
+\begin{lstlisting}[language=SQL, caption={session\_participants хүснэгтийн бүтэц (нэг ширээнд олон төхөөрөмж)}, label={lst:participants}]
+CREATE TABLE session_participants (
+  id          SERIAL PRIMARY KEY,
+  session_id  INTEGER NOT NULL REFERENCES table_sessions(id)
+              ON DELETE CASCADE,
+  customer_id UUID    NOT NULL REFERENCES customers(id),
+  joined_at   TIMESTAMP DEFAULT NOW() NOT NULL,
+  left_at     TIMESTAMP
+);
+CREATE UNIQUE INDEX session_participants_session_customer_uq
+  ON session_participants(session_id, customer_id);
+\end{lstlisting}
+
+\begin{lstlisting}[language=SQL, caption={shared\_cart\_items хүснэгтийн бүтэц (server-д хадгалагдсан хамтын сагс)}, label={lst:cart}]
+CREATE TABLE shared_cart_items (
+  id              SERIAL PRIMARY KEY,
+  session_id      INTEGER NOT NULL REFERENCES table_sessions(id)
+                  ON DELETE CASCADE,
+  menu_item_id    INTEGER NOT NULL,
+  menu_item_name  TEXT    NOT NULL,
+  unit_price      NUMERIC(10,2) NOT NULL,
+  quantity        INTEGER NOT NULL DEFAULT 1,
+  notes           TEXT,
+  added_by_customer_id UUID REFERENCES customers(id),
+  created_at      TIMESTAMP DEFAULT NOW() NOT NULL,
+  updated_at      TIMESTAMP DEFAULT NOW() NOT NULL
 );
 \end{lstlisting}
 
@@ -844,11 +880,257 @@ header-аар илгээгдэнэ.
 \label{fig:login}
 \end{figure}
 
+\section{QR архитектурын шинэчлэлт ба өргөтгөл}
+\label{sec:qr-redesign}
+
+Системийг бодит ажиллагаанд нэвтрүүлэх явцад шалгагдсан хоёр тулгамдсан асуудал
+гарч ирсэн: (1) ширээний QR код нь зочны бүлэг бүрд rotate хийгддэг тул цаасан
+QR-ыг тогтмол дахин хэвлэх шаардлагатай байсан; (2) нэг ширээнд хэд хэдэн зочин
+тус тусдаа төхөөрөмжөөсөө нэгэн зэрэг захиалга хийх боломжгүй (session lock)
+байсан. Эдгээрийг шийдэхээр QR архитектурыг үндсэн загвар хэвээр үлдээсэн ч
+identity ба session security үүргийг тус тусдаа хоёр давхарга болгон салгасан.
+
+\subsection{Stable QR ба ephemeral session JWT хоёр давхарга}
+
+Хуучин загварт \texttt{tables.qr\_token} нь нэг талаас ширээний таних код
+(identity), нөгөө талаас зочны session-ы нууц түлхүүр (security)-ийг хольсон
+байсан тул session дуусахад rotate хийх ёстой болдог байсан.
+
+\textbf{Шинэ загвар:}
+\begin{itemize}
+  \item \textbf{Tables.qr\_token (stable):} ширээ үүсгэгдэх үед нэг удаа гэгчийн
+    UUID үүсэж, цаасан QR-ад хэвлэгдэнэ. Энэ нь зөвхөн ширээний \emph{identity}
+    бөгөөд rotate хийгддэггүй.
+  \item \textbf{Session JWT (ephemeral):} зочин QR-ыг скан хийгээд ``ширээнд сууж
+    байна'' check-in хийхэд сервер JWT (HS256, 8 цагийн expiry) олгож,
+    \texttt{localStorage}-д хадгалагдана. Payload бүтэц:
+    \texttt{\{kind:\textquotesingle session\textquotesingle{}, sid, tid, cid\}}.
+    Захиалга илгээх (\texttt{POST /api/orders}) ба сагс өөрчлөх endpoint-ууд
+    \texttt{X-Session-Token} header шалгаж, \texttt{table\_sessions.ended\_at}
+    тэмдэглэгдсэн session-ний JWT автоматаар хүчингүй болдог.
+\end{itemize}
+
+\noindent\textbf{Photo-QR довтолгооноос хамгаалах гурван давхарга:}
+\begin{enumerate}
+  \item Stable QR нь зөвхөн ширээний цэс үзэх боломж олгох тул зурагласан хэн ч
+    эрхгүйгээр захиалга илгээх боломжгүй.
+  \item Session JWT-ийг ажилтны идэвхжүүлсэн (\texttt{status=occupied} +
+    нээлттэй session) ширээнд л сервер олгоно.
+  \item Хуучин session-ы JWT нь \texttt{sid}-тэй холбогдсон тул session
+    хаагдсан мөчид сервер 401 \texttt{invalid\_session} буцаана.
+\end{enumerate}
+
+\subsection{Олон төхөөрөмжийн дэмжлэг (multi-device session)}
+
+Хуучин архитектурт нэг ширээнд аль ч үед нэг л идэвхтэй
+\texttt{table\_session} байх ба нэг customer-той холбогдох \texttt{session\_taken}
+lock-той байсан. Шинэ дизайнаар \texttt{session\_participants} junction хүснэгт
+(Хүснэгт~\ref{lst:participants}) нэмэгдсэн бөгөөд session-customer холбоо
+many-to-many болсон. Ингэснээр нэг ширээнд олон зочин (өөрсдийн утаснаас) нэгэн
+зэрэг скан хийж check-in хийх боломжтой болсон.
+
+\textbf{Багтаамжид суурилсан хязгаар (capacity-based limit):} \texttt{tables.capacity}
+талбарын утга нь session-д нэгэн зэрэг холбогдох төхөөрөмжийн хязгаар болдог.
+Жишээ нь: 4 хүний ширээ $\to$ 4 төхөөрөмж, 8 хүний ширээ $\to$ 8 төхөөрөмж.
+Хязгаараас хэтрэх оролдлогод сервер 429 алдааны код буюу
+\texttt{session\_full} message-тэй хариу буцаана.
+
+\begin{lstlisting}[language=JavaScript, caption={Capacity-based device limit (tables.ts)}, label={lst:capacity}]
+const limit = Math.max(1, table.capacity);
+const [{ count } = { count: 0 }] = await db
+  .select({ count: countDistinct(sessionParticipantsTable.customerId) })
+  .from(sessionParticipantsTable)
+  .where(and(
+    eq(sessionParticipantsTable.sessionId, openSession.id),
+    isNull(sessionParticipantsTable.leftAt),
+  ));
+
+if ((count ?? 0) >= limit) {
+  res.status(429).json({
+    error: "session_full",
+    message: `Энэ ширээнд хамгийн ихдээ ${limit} төхөөрөмж нэгэн зэрэг
+              холбогдоно (ширээний багтаамж).`,
+    limit,
+  });
+  return;
+}
+
+await db.insert(sessionParticipantsTable).values({
+  sessionId: openSession.id, customerId,
+});
+io.to(`session_${table.qrToken}`).emit("participant:joined", {
+  sessionId: openSession.id, tableId: table.id,
+});
+\end{lstlisting}
+
+\subsection{Олон төхөөрөмжийн check-in дарааллын диаграм}
+
+Хоёр төхөөрөмж (зочин A, B) нэг ширээний QR-ыг скан хийгээд нэг session-д
+нэгдэх үйл явцыг Зураг~\ref{fig:seq_multi} харуулна. \texttt{participant:joined}
+event нь session room-руу broadcast хийгдэж бусад төхөөрөмжид шууд харагдана.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  actor/.style={rectangle, draw, minimum width=2.2cm, minimum height=0.7cm,
+    align=center, font=\small\bfseries, fill=blue!10, rounded corners=3pt},
+  msg/.style={-{Stealth}, thick},
+  ret/.style={-{Stealth}, dashed},
+  note/.style={font=\scriptsize}
+]
+
+\node[actor] (a)   at (0,0)   {Зочин A};
+\node[actor] (b)   at (3,0)   {Зочин B};
+\node[actor] (api) at (7,0)   {API Server};
+\node[actor] (db)  at (11,0)  {PostgreSQL};
+\node[actor] (io)  at (14.5,0){Socket.IO};
+
+\foreach \x in {a, b, api, db, io} {
+  \draw[dashed, gray] (\x.south) -- ++(0,-9.5);
+}
+
+\draw[msg] (0,-1) -- node[above, note]{1. POST /tables/:tok/checkin} (7,-1);
+\draw[msg] (7,-1.5) -- node[above, note]{2. SELECT participants WHERE sid} (11,-1.5);
+\draw[ret] (11,-2) -- node[above, note]{3. count=0 ($<$ capacity=4)} (7,-2);
+\draw[msg] (7,-2.5) -- node[above, note]{4. INSERT participant(A)} (11,-2.5);
+\draw[msg] (7,-3) -- node[above, note]{5. signSessionToken(sid,tid,cid\_A)} (7,-3.5);
+\draw[ret] (7,-4) -- node[above, note]{6. \{sessionToken\_A\}} (0,-4);
+\draw[msg] (7,-4.5) -- node[above, note]{7. emit participant:joined} (14.5,-4.5);
+
+\node[note, text=gray] at (7,-5.2) {$\cdots$ Хэдэн секундын дараа Зочин B скан $\cdots$};
+
+\draw[msg] (3,-6) -- node[above, note]{8. POST /tables/:tok/checkin} (7,-6);
+\draw[msg] (7,-6.5) -- node[above, note]{9. count=1 ($<$ capacity=4) OK} (11,-6.5);
+\draw[msg] (7,-7) -- node[above, note]{10. INSERT participant(B)} (11,-7);
+\draw[ret] (7,-7.5) -- node[above, note]{11. \{sessionToken\_B\}} (3,-7.5);
+\draw[msg] (7,-8) -- node[above, note]{12. emit participant:joined} (14.5,-8);
+\draw[ret] (14.5,-8.5) -- node[above, note]{13. UI: ``2 зочин холбогдсон''} (0,-8.5);
+
+\end{tikzpicture}
+\caption{Олон төхөөрөмжийн check-in дарааллын диаграм}
+\label{fig:seq_multi}
+\end{figure}
+
+\subsection{Хамтын сагсны бодит цагийн нэгтгэл (shared cart)}
+
+Хуучин архитектурт сагс нь зөвхөн клиент талын Zustand store-д хадгалагддаг
+байсан тул нэг ширээний өөр төхөөрөмжүүд бие биеийнхээ сонголтыг харж
+чаддаггүй байсан. Шинэ архитектурт серверийн \texttt{shared\_cart\_items}
+хүснэгт (Хүснэгт~\ref{lst:cart}) дээр сагсыг session тус бүрээр хадгалж,
+\texttt{POST /api/tables/:token/cart} endpoint-уудаар CRUD үйлдэл хийгдэнэ.
+
+\textbf{Үйл явц:}
+\begin{enumerate}
+  \item Зочин A телефонныхоо ``хоол нэмэх'' товч дарна $\to$
+    \texttt{POST /api/tables/:tok/cart} (X-Session-Token шалгагдана).
+  \item Сервер \texttt{INSERT shared\_cart\_items}, дараа нь
+    \texttt{io.to(`session\_\$\{qrToken\}`).emit(``cart:updated'', items)}
+    broadcast хийнэ.
+  \item Тухайн session-д холбогдсон бүх төхөөрөмж (A, B, C...)
+    \texttt{cart:updated} event хүлээн авч UI-аа дахин render хийнэ.
+\end{enumerate}
+
+Захиалга илгээх товч дарагдмагц зочин шинэ \texttt{order} үүсгэх ба
+\texttt{shared\_cart\_items}-ыг session-ноос автоматаар цэвэрлэдэг.
+
+\begin{lstlisting}[language=JavaScript, caption={Shared cart broadcast (cart.ts)}, label={lst:cart-bcast}]
+async function broadcastCart(io, qrToken, sessionId) {
+  const items = await db
+    .select()
+    .from(sharedCartItemsTable)
+    .where(eq(sharedCartItemsTable.sessionId, sessionId));
+  io.to(`session_${qrToken}`).emit("cart:updated", { items });
+}
+
+router.post("/tables/:token/cart", requireSession, async (req, res) => {
+  const { menuItemId, menuItemName, unitPrice, quantity, notes } = req.body;
+  await db.insert(sharedCartItemsTable).values({
+    sessionId: req.session.sid,
+    menuItemId, menuItemName, unitPrice, quantity, notes,
+    addedByCustomerId: req.session.cid,
+  });
+  await broadcastCart(io, req.params.token, req.session.sid);
+  res.json({ ok: true });
+});
+\end{lstlisting}
+
+\subsection{Олон нийтийн (public) хандалт ба QR-гүй ажиллагаа}
+
+Зочид зөвхөн ресторанд ирээд QR кодыг скан хийсний дараа л системд хандах
+боломжтой байсныг шинэчилж, ирээдүйн зочид интернетээс шууд цэс үзэх, ширээ
+урьдчилан захиалах, өмнөх зочдын сэтгэгдлийг харах боломжтой болгосон.
+Эдгээр хуудаснууд нь \texttt{PublicLayout} нэртэй нэгдсэн loyout-той бөгөөд
+дотор нь рестораны нэр, навигацийн линк, footer (хаяг, утас, цагийн хуваарь)
+агуулна.
+
+\begin{table}[htbp]
+\caption{QR-гүй public хуудсууд ба route-ууд}
+\label{tab:public}
+\centering
+\small
+\begin{tabularx}{\textwidth}{|l|l|L|}
+\hline
+\rowcolor{TableHdr}
+\textcolor{white}{\textbf{Route}} &
+\textcolor{white}{\textbf{Хуудас}} &
+\textcolor{white}{\textbf{Үндсэн үүрэг}} \\ \hline
+\texttt{/} & LandingPage & Hero banner, рестораны нэр, 3 CTA карт \\ \hline
+\rowcolor{LightBlue}
+\texttt{/browse} & BrowseMenuPage & Цэс ангилал тус бүрээр + хайлт \\ \hline
+\texttt{/reservations} & ReservationsPage & Ширээний урьдчилан захиалга
+  (хүний тоо, огноо, тэмдэглэл) \\ \hline
+\rowcolor{LightBlue}
+\texttt{/reviews} & ReviewsPage & Дундаж үнэлгээ, түгээлт, бүх сэтгэгдэл,
+  шинэ сэтгэгдэл бичих маягт \\ \hline
+\texttt{/menu?t=...} & GuestMenuPage & QR-аас орсон зочин (session JWT
+  шаардлагатай) -- хуучин flow хэвээр \\ \hline
+\rowcolor{LightBlue}
+\texttt{/staff/login}, \texttt{/staff} & Staff dashboard & Ажилтны нэвтрэх ба
+  удирдлагын самбар \\ \hline
+\end{tabularx}
+\end{table}
+
+Эдгээр route-ууд нь Wouter routing library-ээр зохион байгуулагдсан бөгөөд
+\texttt{App.tsx} дотор \texttt{<Switch>} component-д бүртгэгдсэн. Хэрэв зочин
+QR-гүйгээр захиалга илгээх оролдлого хийвэл UI түвшинд ширээ сонгох товч
+харагдахгүй (зөвхөн ``Үйлчлэгчид хандана уу'' гэсэн toast харагдана), серверийн
+түвшинд \texttt{requireSession} middleware 401 буцаана.
+
+\textbf{Cloudflared tunnel-ээр гадаад хандалт:} Хөгжүүлэлт ба тестийн орчинд
+\texttt{cloudflared tunnel --url http://localhost:8080 --protocol http2 --edge-ip-version 4}
+гэсэн командаар trycloudflare.com domain-аар https endpoint үүсгэн, гадаад
+сүлжээнээс системд нэвтрэх боломжтой болгосон. Production deployment-д бол
+тогтвортой Cloudflare Tunnel эсвэл Nginx reverse proxy + Let's Encrypt
+сертификат ашиглана.
+
+\subsection{Бусад нэмэлт сайжруулалтууд}
+
+QR архитектурын шинэчлэлтийн зэрэгцээ дараах туслах боломжуудыг хэрэгжүүлсэн:
+\begin{itemize}
+  \item \textbf{Ээлж тус бүрийн захиалгын дугаар:} Захиалгын дугаарыг өдөр
+    бүрийн ээлж (өглөө/үдээс хойш/орой) тус бүрд автомат тэглэж дугаарлах
+    \texttt{computeShiftPeriods} ба \texttt{findShiftPeriodIdx} helper-ууд.
+    Захиалга харагдах дугаар нь \texttt{shiftNumber} талбараас тооцогдоно.
+  \item \textbf{Захиалгын түүх modal:} Огноо, ширээгээр шүүлттэй өмнөх захиалгын
+    жагсаалтыг ажилтны самбараас харах боломж.
+  \item \textbf{AR (Augmented Reality) хоолны үзүүлбэр:} \texttt{model-viewer}
+    компонент дээр 29\% (scale 0.000435) хувийн хэмжээгээр хоолны 3D загвар
+    харуулах боломж нэмэгдсэн.
+  \item \textbf{Тестийн өгөгдөл байршуулах script:} 200+ хоол, 80+ ширээ, 1000+
+    захиалгатай тэжээлийн script демо орчинд ажиллана.
+  \item \textbf{4 SVG banner ба sponsor logo:} Landing page-д рестораны
+    танилцуулга + 3 spons brand-ын логотойг харуулна.
+  \item \textbf{Tab нэрийн стандартчлал:} ``Захиалга'' $\to$
+    ``Ширээний захиалга'' гэж өөрчлөгдсөн.
+\end{itemize}
+
 \section{API жагсаалт}
 
 Системийн REST API endpoint-уудыг бүлэг тус бүрээр (auth, menu, tables,
-orders, inventory, reports, feedback, upload) нэгтгэн Хүснэгт~\ref{tab:api}
-дээр харуулав.
+orders, inventory, reports, feedback, upload, session/cart, public) нэгтгэн
+Хүснэгт~\ref{tab:api} дээр харуулав. Нийт 43 endpoint бөгөөд QR архитектурын
+шинэчлэлтийн хүрээнд session JWT олгох болон хамтын сагсны 7 шинэ endpoint,
+public хандалтын 6 endpoint нэмэгдсэн.
 
 \begin{longtable}{|c|l|l|p{5cm}|}
 \caption{REST API endpoint-уудын жагсаалт} \label{tab:api} \\
@@ -918,6 +1200,28 @@ orders, inventory, reports, feedback, upload) нэгтгэн Хүснэгт~\ref
 \rowcolor{LightBlue}
 29 & PATCH & /api/feedback/:id/read & Сэтгэгдэл уншсан тэмдэглэх \\ \hline
 30 & POST & /api/upload & Зураг байршуулах (S3) \\ \hline
+\multicolumn{4}{|l|}{\textbf{Session ба shared cart (шинэ)}} \\ \hline
+\rowcolor{LightBlue}
+31 & POST & /api/tables/:token/checkin & Session JWT олгох (multi-device) \\ \hline
+32 & GET & /api/tables/:token/cart & Session-ний хамтын сагс татах \\ \hline
+\rowcolor{LightBlue}
+33 & POST & /api/tables/:token/cart & Сагсанд хоол нэмэх + broadcast \\ \hline
+34 & PATCH & /api/tables/:token/cart/:id & Сагсны мөр засварлах \\ \hline
+\rowcolor{LightBlue}
+35 & DELETE & /api/tables/:token/cart/:id & Сагснаас мөр устгах \\ \hline
+36 & DELETE & /api/tables/:token/cart & Сагсыг бүхэлд нь цэвэрлэх \\ \hline
+\rowcolor{LightBlue}
+37 & POST & /api/tables/:id/rotate-qr & QR-ыг гараар сэргээх (manager) \\ \hline
+\multicolumn{4}{|l|}{\textbf{Public (QR-гүй)}} \\ \hline
+38 & GET & /api/menu/categories & Цэс ангилал (public) \\ \hline
+\rowcolor{LightBlue}
+39 & POST & /api/reservations & Online ширээний урьдчилан захиалга \\ \hline
+40 & GET & /api/reviews & Public сэтгэгдлийн жагсаалт \\ \hline
+\rowcolor{LightBlue}
+41 & POST & /api/reviews & Public сэтгэгдэл нэмэх \\ \hline
+42 & GET & /api/settings & Рестораны мэдээлэл \\ \hline
+\rowcolor{LightBlue}
+43 & GET & /api/banners & Landing page-ийн banner \\ \hline
 
 \end{longtable}
 
@@ -951,6 +1255,14 @@ orders, inventory, reports, feedback, upload) нэгтгэн Хүснэгт~\ref
 \rowcolor{LightBlue}
 8 & new\_feedback & Сервер $\to$ Менежер & Зочноос сэтгэгдэл ирсэн \\ \hline
 9 & disconnect & Клиент $\to$ Сервер & Холболт тасрах \\ \hline
+\rowcolor{LightBlue}
+10 & participant:joined & Сервер $\to$ Session room & Шинэ төхөөрөмж check-in
+  (multi-device) \\ \hline
+11 & cart:updated & Сервер $\to$ Session room & Хамтын сагсны бүх мөр
+  өөрчлөгдөв \\ \hline
+\rowcolor{LightBlue}
+12 & session:ended & Сервер $\to$ Session room & Session хаагдсан, JWT
+  хүчингүй \\ \hline
 \end{tabularx}
 \end{table}
 
@@ -1140,14 +1452,34 @@ export const menuItems = pgTable('menu_items', {
 \section{Бүлгийн дүгнэлт}
 
 Энэхүү бүлэгт системийн 4 давхаргат архитектурыг тодорхойлж, компонент болон
-хэрэгжүүлэлтийн диаграмаар дэлгэрэнгүй дүрсэлсэн. 9 хүснэгт бүхий ER диаграм
+хэрэгжүүлэлтийн диаграмаар дэлгэрэнгүй дүрсэлсэн. 11 хүснэгт бүхий ER диаграм
 болон SQL schema-г нарийвчлан боловсруулж, \texttt{inventory\_items},
-\texttt{table\_sessions}, \texttt{feedback} гэх системийн өргөтгөсөн функцүүдийг
-тусгасан. Захиалгын статусын шилжилтийн state machine диаграм, үндсэн захиалга
-болон нөөц хасалтын дараалал, JWT нэвтрэх сайд зэрэг 4 дарааллын диаграм,
+\texttt{table\_sessions}, \texttt{feedback}, түүнчлэн QR архитектурын
+шинэчлэлтийн хүрээнд нэмэгдсэн \texttt{session\_participants} (олон төхөөрөмжийн
+junction) ба \texttt{shared\_cart\_items} (хамтын сагс) хүснэгтүүдийг
+системийн өргөтгөсөн функцэд тусгасан.
+
+QR архитектурын шинэчлэл нь stable QR (ширээний identity) ба ephemeral session
+JWT (security)-ийг хоёр давхарга болгон салгаж, цаасан QR-ыг дахин хэвлэх
+шаардлагагүй болгож, нэг ширээнд олон зочин нэгэн зэрэг нэгдэн ажиллаж, бүх
+төхөөрөмж дээр нэг ерөнхий сагсыг бодит цагт харах боломжтой болсон. Багтаамжид
+суурилсан хязгаар (\texttt{tables.capacity}) нь ширээ тус бүрд тохирсон device
+лимитийг автомат тогтоодог. Public route-ууд (\texttt{/}, \texttt{/browse},
+\texttt{/reservations}, \texttt{/reviews}) нь зочдод QR-гүйгээр интернетээс
+шууд цэс үзэх, ширээ урьдчилан захиалах, сэтгэгдэл уншиж бичих боломжийг
+олгодог.
+
+Захиалгын статусын шилжилтийн state machine диаграм, үндсэн захиалга, JWT
+нэвтрэх, нөөц хасалт, multi-device check-in зэрэг 5 дарааллын диаграм,
 swimlane-тэй үйл ажиллагааны диаграмаар системийн урсгалыг бүрэн загварчилсан.
-Нийт 30 REST API endpoint-ийг 8 бүлэгт хувааж тодорхойлон 9 Socket.IO үйл явдлыг
-хэрэгжүүлсэн. k6 ачааллын туршилтаар системийн гүйцэтгэл шаардлагыг хангаж
-байгааг баталж, SUS үнэлгээгээр 84.2 оноо авсан нь ``Маш сайн'' зэрэглэлд
-хамаарч байгааг тогтоосон. Уламжлалт аргатай харьцуулахад захиалгын хугацаа 62\%,
-алдааны хувь 94\%-иар буурсан гэсэн тодорхой үр дүн гарсан.
+Нийт 43 REST API endpoint-ийг 10 бүлэгт хувааж тодорхойлон 12 Socket.IO үйл
+явдлыг (үүний дотор \texttt{participant:joined}, \texttt{cart:updated},
+\texttt{session:ended}) хэрэгжүүлсэн. Үүнээс гадна ээлж тус бүрийн захиалгын
+дугаарлалт, AR хоолны 3D үзүүлбэр, тестийн өгөгдөл байршуулагч,
+Cloudflare Tunnel-аар гадаад хандалт, 4 SVG banner болон sponsor harness зэрэг
+нэмэлт сайжруулалтуудыг хэрэгжүүлсэн.
+
+k6 ачааллын туршилтаар системийн гүйцэтгэл шаардлагыг хангаж байгааг баталж,
+SUS үнэлгээгээр 84.2 оноо авсан нь ``Маш сайн'' зэрэглэлд хамаарч байгааг
+тогтоосон. Уламжлалт аргатай харьцуулахад захиалгын хугацаа 62\%, алдааны хувь
+94\%-иар буурсан гэсэн тодорхой үр дүн гарсан.

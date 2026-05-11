@@ -27,8 +27,18 @@ router.post("/reservations", async (req, res) => {
     }
 
     const date = new Date(reservationDate);
-    if (date <= new Date()) {
+    if (Number.isNaN(date.getTime())) {
+      res.status(400).json({ error: "validation_error", message: "Огноо буруу байна" });
+      return;
+    }
+    const now = new Date();
+    if (date <= now) {
       res.status(400).json({ error: "validation_error", message: "Ирээдүйн огноо сонгоно уу" });
+      return;
+    }
+    const maxDate = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+    if (date > maxDate) {
+      res.status(400).json({ error: "validation_error", message: "Захиалга 1 жилээс цааш хугацаагаар боломжгүй" });
       return;
     }
 
@@ -47,7 +57,8 @@ router.post("/reservations", async (req, res) => {
 
     res.status(201).json(reservation);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -69,7 +80,8 @@ router.get("/reservations", requireAuth, async (req, res) => {
     const reservations = await query.orderBy(desc(reservationsTable.reservationDate));
     res.json(reservations);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -106,7 +118,8 @@ router.patch("/reservations/:id", requireAuth, requireRole("manager", "cashier")
     if (!reservation) { res.status(404).json({ error: "not_found" }); return; }
     res.json(reservation);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -117,7 +130,8 @@ router.delete("/reservations/:id", requireAuth, requireRole("manager"), async (r
     await db.delete(reservationsTable).where(eq(reservationsTable.id, id));
     res.status(204).send();
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 

@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { socket } from '@/lib/socket';
+import { useStore } from '@/hooks/use-store';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetTableOrdersQueryKey, getGetOrdersQueryKey } from '@workspace/api-client-react';
+
+const STAFF_ROOM = (import.meta.env.VITE_STAFF_ROOM as string | undefined) ?? 'restaurant_1';
 
 export function useGuestRealtime(tableToken?: string) {
   const queryClient = useQueryClient();
@@ -9,7 +12,8 @@ export function useGuestRealtime(tableToken?: string) {
 
   useEffect(() => {
     if (!tableToken) return;
-    
+
+    socket.auth = { tableToken };
     socket.connect();
     
     const onConnect = () => {
@@ -39,14 +43,18 @@ export function useGuestRealtime(tableToken?: string) {
 
 export function useStaffRealtime() {
   const queryClient = useQueryClient();
+  const token = useStore((s) => s.token);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
+    if (!token) return;
+
+    socket.auth = { token };
     socket.connect();
     
     const onConnect = () => {
       setConnected(true);
-      socket.emit('join', `restaurant_1`);
+      socket.emit('join', STAFF_ROOM);
     };
     const onDisconnect = () => setConnected(false);
 
@@ -66,7 +74,7 @@ export function useStaffRealtime() {
       socket.off('order:updated', handleUpdate);
       socket.disconnect();
     };
-  }, [queryClient]);
+  }, [queryClient, token]);
 
   return { connected };
 }

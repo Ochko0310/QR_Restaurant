@@ -54,17 +54,22 @@ router.get("/reports/summary", requireAuth, requireRole("manager", "cashier"), a
       avgPrepMinutes = Math.round(prepTimes.reduce((a, b) => a + b, 0) / prepTimes.length);
     }
 
-    // Peak hours analysis
-    const hourCounts: Record<number, { orders: number; revenue: number }> = {};
-    for (const o of paidOrders) {
-      const hour = new Date(o.createdAt).getHours();
-      if (!hourCounts[hour]) hourCounts[hour] = { orders: 0, revenue: 0 };
-      hourCounts[hour]!.orders++;
-      hourCounts[hour]!.revenue += Number(o.totalAmount);
-    }
-    const peakHours = Object.entries(hourCounts)
-      .map(([hour, data]) => ({ hour: parseInt(hour), ...data }))
-      .sort((a, b) => b.orders - a.orders);
+    // Peak hours analysis (aggregated in SQL)
+    const peakHoursRows = await db
+      .select({
+        hour: sql<number>`EXTRACT(HOUR FROM ${ordersTable.createdAt})::int`,
+        orders: sql<number>`COUNT(*)::int`,
+        revenue: sql<number>`SUM(${ordersTable.totalAmount})::float`,
+      })
+      .from(ordersTable)
+      .where(and(...conditions))
+      .groupBy(sql`EXTRACT(HOUR FROM ${ordersTable.createdAt})`)
+      .orderBy(sql`COUNT(*) DESC`);
+    const peakHours = peakHoursRows.map((r) => ({
+      hour: Number(r.hour),
+      orders: Number(r.orders),
+      revenue: Number(r.revenue ?? 0),
+    }));
 
     // Payment method breakdown
     const paymentBreakdown = { cash: 0, bank: 0 };
@@ -87,22 +92,22 @@ router.get("/reports/summary", requireAuth, requireRole("manager", "cashier"), a
     }
     const cancelledCount = ordersByStatus["cancelled"] ?? 0;
 
-    // Top items
+    // Top items (SQL aggregation restricted to paid-order items)
     const orderIds = paidOrders.map((o) => o.id);
-    const itemAgg: Record<string, { name: string; quantity: number; revenue: number }> = {};
-
+    let topItems: Array<{ name: string; quantity: number; revenue: number }> = [];
     if (orderIds.length > 0) {
-      const items = await db.select().from(orderItemsTable).where(inArray(orderItemsTable.orderId, orderIds));
-      for (const item of items) {
-        if (!itemAgg[item.menuItemName]) {
-          itemAgg[item.menuItemName] = { name: item.menuItemName, quantity: 0, revenue: 0 };
-        }
-        itemAgg[item.menuItemName]!.quantity += item.quantity;
-        itemAgg[item.menuItemName]!.revenue += Number(item.unitPrice) * item.quantity;
-      }
+      const rows = await db
+        .select({
+          name: orderItemsTable.menuItemName,
+          quantity: sql<number>`SUM(${orderItemsTable.quantity})::int`,
+          revenue: sql<number>`SUM(${orderItemsTable.unitPrice} * ${orderItemsTable.quantity})::float`,
+        })
+        .from(orderItemsTable)
+        .where(inArray(orderItemsTable.orderId, orderIds))
+        .groupBy(orderItemsTable.menuItemName)
+        .orderBy(sql`SUM(${orderItemsTable.quantity}) DESC`);
+      topItems = rows.map((r) => ({ name: r.name, quantity: Number(r.quantity), revenue: Number(r.revenue ?? 0) }));
     }
-
-    const topItems = Object.values(itemAgg).sort((a, b) => b.quantity - a.quantity);
 
     // Table turnover (unique tables served)
     const uniqueTables = new Set(paidOrders.map((o) => o.tableId));
@@ -124,7 +129,8 @@ router.get("/reports/summary", requireAuth, requireRole("manager", "cashier"), a
       topItems,
     });
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -184,7 +190,8 @@ router.get("/reports/export", requireAuth, requireRole("manager", "cashier"), as
     res.setHeader("Content-Disposition", `attachment; filename="report_${(from ?? "all").slice(0, 10)}_${(to ?? "all").slice(0, 10)}.csv"`);
     res.send(body);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 

@@ -26,10 +26,35 @@ async function attachMenu(item: InventoryRow): Promise<InventoryWithMenu> {
 router.get("/inventory", requireAuth, requireRole("manager", "cashier"), async (_req, res) => {
   try {
     const items = await db.select().from(inventoryItemsTable).orderBy(desc(inventoryItemsTable.updatedAt));
-    const enriched = await Promise.all(items.map(attachMenu));
+    if (items.length === 0) {
+      res.json([]);
+      return;
+    }
+    const itemIds = items.map((i) => i.id);
+    const menuRows = await db
+      .select()
+      .from(menuItemsTable)
+      .where(inArray(menuItemsTable.inventoryItemId, itemIds))
+      .orderBy(asc(menuItemsTable.id));
+    const menuByInventoryId = new Map<number, typeof menuRows[number]>();
+    for (const row of menuRows) {
+      if (row.inventoryItemId != null && !menuByInventoryId.has(row.inventoryItemId)) {
+        menuByInventoryId.set(row.inventoryItemId, row);
+      }
+    }
+    const enriched: InventoryWithMenu[] = items.map((item) => {
+      const menu = menuByInventoryId.get(item.id);
+      return {
+        ...item,
+        price: menu ? Number(menu.price) : 0,
+        categoryId: menu?.categoryId ?? null,
+        menuItemId: menu?.id ?? null,
+      };
+    });
     res.json(enriched);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -60,6 +85,10 @@ router.post("/inventory", requireAuth, requireRole("manager", "cashier"), async 
       res.status(400).json({ error: "validation_error", message: "Цэсний ангилал сонгоно уу" });
       return;
     }
+    if (threshold != null && (threshold < 0 || !Number.isInteger(threshold))) {
+      res.status(400).json({ error: "validation_error", message: "Босго 0-ээс бага буюу бүхэл бус байж болохгүй" });
+      return;
+    }
 
     const [item] = await db.insert(inventoryItemsTable).values({
       name, type, quantity, threshold: threshold ?? 5, imageUrl: imageUrl ?? null,
@@ -77,7 +106,8 @@ router.post("/inventory", requireAuth, requireRole("manager", "cashier"), async 
 
     res.status(201).json(await attachMenu(item));
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -103,7 +133,13 @@ router.patch("/inventory/:id", requireAuth, requireRole("manager", "cashier"), a
       }
       data.quantity = updates.quantity;
     }
-    if (updates.threshold !== undefined) data.threshold = updates.threshold;
+    if (updates.threshold !== undefined) {
+      if (updates.threshold < 0 || !Number.isInteger(updates.threshold)) {
+        res.status(400).json({ error: "validation_error", message: "Босго буруу байна" });
+        return;
+      }
+      data.threshold = updates.threshold;
+    }
     if (updates.imageUrl !== undefined) data.imageUrl = updates.imageUrl;
 
     const [item] = await db.update(inventoryItemsTable).set(data).where(eq(inventoryItemsTable.id, id)).returning();
@@ -133,7 +169,8 @@ router.patch("/inventory/:id", requireAuth, requireRole("manager", "cashier"), a
 
     res.json(await attachMenu(item));
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -173,7 +210,8 @@ router.delete("/inventory/:id", requireAuth, requireRole("manager", "cashier"), 
     await db.delete(inventoryItemsTable).where(eq(inventoryItemsTable.id, id));
     res.status(204).send();
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 

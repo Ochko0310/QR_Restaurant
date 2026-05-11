@@ -16,7 +16,8 @@ router.get("/settings", async (_req, res) => {
     }
     res.json(settings);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -33,7 +34,8 @@ router.put("/settings/:key", requireAuth, requireRole("manager"), async (req, re
     }
     res.json({ key, value });
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 

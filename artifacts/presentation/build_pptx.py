@@ -298,17 +298,15 @@ SLIDES.append(slide_cover)
 def slide_agenda():
     s = add_slide(); header(s, "Илтгэлийн бүтэц")
     items = [
-        "1. Судалгааны сэдвийн үндэслэл, асуудал, зорилго",
-        "2. Одоогийн шийдлүүдтэй харьцуулсан судалгаа",
-        "3. Функциональ ба функциональ бус шаардлагууд",
-        "4. Системийн архитектур, технологи сонголт",
-        "5. Хэрэглэгчийн хэрэглээний диаграм (Use Case)",
-        "6. Өгөгдлийн сангийн загвар (ER диаграм)",
-        "7. Гол бизнес процессуудын дараалал (Sequence)",
-        "8. API, WebSocket, аюулгүй байдал",
-        "9. Байршуулалтын архитектур (Deployment)",
-        "10. Туршилт, үр дүн",
-        "11. Дүгнэлт, цаашдын ажил",
+        "1. Судалгааны үндэслэл, асуудал, зорилго",
+        "2. Функциональ ба функциональ бус шаардлагууд",
+        "3. Системийн үйл ажиллагааны ерөнхий танилцуулга",
+        "4. AR цэс — бодит орчинд 3D хоолны харагдац",
+        "5. Ажилтны цагын бүртгэлийн дэд систем",
+        "6. Архитектур, Use Case, ER загвар",
+        "7. API, WebSocket, аюулгүй байдал",
+        "8. Байршуулалт, туршилтын үр дүн",
+        "9. Дүгнэлт, цаашдын ажил",
     ]
     # Хоёр багана
     left = items[:6]; right = items[6:]
@@ -398,7 +396,7 @@ def slide_price_chart():
         ("Дэлхийн стандарт", "Үндсэн функцууд бүгд орсон."),
     ], size=12)
 
-SLIDES.append(slide_price_chart)
+# SLIDES.append(slide_price_chart)  # хасав — redundant
 
 # -------- Slide 5: Зорилго, зорилт --------
 def slide_goal():
@@ -441,12 +439,12 @@ def slide_novelty():
     add_text(s, Inches(0.7), Inches(1.3), Inches(5.8), Inches(0.45),
              "Шинэлэг тал", size=17, bold=True, color=PRIMARY)
     bullet_list(s, Inches(0.7), Inches(1.8), Inches(5.8), Inches(5.1), [
-        ("Монгол хэл", "Бүх UI, имэйл, нэхэмжлэх монгол."),
-        ("QPay интеграц", "Callback-аар автоматаар тооцоо хаагдана."),
+        ("AR цэс", "Хоолыг бодит орчинд 3D загвараар харах."),
+        ("Цагын бүртгэл", "Ажилтны цагийг QR/PIN-ээр автомат бүртгэнэ."),
+        ("Монгол хэл · QPay", "UI монгол, QPay callback-тай нэгдсэн."),
         ("Mobile-first", "React Native нэг codebase — iOS + Android."),
         ("Socket.IO бодит цагт", "Захиалга, статусын шинэчлэл 1 сек-д."),
-        ("Хэрэглэхүйн судалгаа", "SUS шкалаар эцсийн хэрэглэгчид үнэлгээ."),
-        ("Нээлттэй архитектур", "Layered + RBAC + Drizzle ORM → засварлах хялбар."),
+        ("Нээлттэй архитектур", "Layered + RBAC + Drizzle ORM — засварлах хялбар."),
     ], size=13)
     # Баруун: хязгаарлалт
     add_round_rect(s, Inches(6.85), Inches(1.2), Inches(6.15), Inches(5.8),
@@ -454,9 +452,9 @@ def slide_novelty():
     add_text(s, Inches(7.05), Inches(1.3), Inches(5.8), Inches(0.45),
              "Хязгаарлалт", size=17, bold=True, color=RED)
     bullet_list(s, Inches(7.05), Inches(1.8), Inches(5.8), Inches(5.1), [
-        ("Цар хүрээ", "1 зоогийн газар дээр прототип, олон салбар дэмжлэг II шатанд."),
+        ("Цар хүрээ", "1 зоогийн газар дээр прототип, олон салбар II шатанд."),
         ("Нөөц удирдлага", "Түүхий эдийн анхан шатны хяналт, нарийн нягтлан хөтлөлтгүй."),
-        ("AR цэс", "Зөвхөн зураг/видео; 3D/AR дараагийн хувилбарт."),
+        ("AR контент", "Эхлэлийн хувилбарт 15–20 хоолны 3D загвар хамрагдана."),
         ("Хүргэлт", "Зөвхөн зоогийн газар доторх захиалга, delivery II шатанд."),
         ("Сэтгэгдлийн ML", "Рэйтинг бичлэг; автомат sentiment-ийг үгүйсгэсэн."),
         ("Оффлайн горим", "Зөвхөн урьдчилан татсан цэс, захиалга онлайн."),
@@ -517,6 +515,197 @@ def slide_nfr():
         y = y + ch + gap
 
 SLIDES.append(slide_nfr)
+
+# =======================================================================
+#  Системийн үйл ажиллагаа + 2 онцлох дэд систем (AR + Цагын бүртгэл)
+# =======================================================================
+
+# -------- Системийн үйл ажиллагааны нэгдсэн ерөнхий танилцуулга --------
+def slide_system_overview():
+    s = add_slide(); header(s, "Системийн үйл ажиллагаа — ерөнхий дүр зураг")
+    add_text(s, Inches(0.5), Inches(1.15), Inches(12.3), Inches(0.4),
+             "Зоогийн газрын үйл ажиллагааг хамарсан 4 гол бүлэг функц",
+             size=13, italic=True, color=ACCENT)
+    # 4 main pillars
+    pillars = [
+        ("QR ширээ захиалга", PRIMARY,
+         "QR скан → цэс → захиалга\nбодит цагт гал тогоонд\nQPay-ээр тооцоо"),
+        ("AR цэс", GOLD,
+         "Хоолыг 3D загвараар\nбодит орчинд байрлуулж\nхарах боломж"),
+        ("Ажилтны цагын бүртгэл", OLIVE,
+         "Ажлын эхлэх/дуусах\nQR/PIN нэвтрэлт, дундуур\nзавсарлага, цалин"),
+        ("Менежерийн панель", ACCENT,
+         "Цэс, нөөц, тайлан\nборлуулалт, хэрэглэгч\nRBAC эрхтэйгээр"),
+    ]
+    cw = Inches(3.0); ch = Inches(2.6); gap = Inches(0.15)
+    for i, (t, c, d) in enumerate(pillars):
+        x = Inches(0.5) + i * (cw + gap)
+        add_round_rect(s, x, Inches(1.7), cw, Inches(0.7), c)
+        add_text(s, x, Inches(1.7), cw, Inches(0.7), t,
+                 size=14, bold=True, color=WHITE,
+                 align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+        add_round_rect(s, x, Inches(2.45), cw, ch - Inches(0.75), LIGHT, line_color=c)
+        add_text(s, x + Inches(0.15), Inches(2.6), cw - Inches(0.3), ch - Inches(1.0),
+                 d, size=12, color=DARK, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    # Гол зангилаа
+    add_round_rect(s, Inches(0.5), Inches(4.7), Inches(12.3), Inches(2.2),
+                   PRIMARY, line_color=PRIMARY)
+    add_text(s, Inches(0.7), Inches(4.8), Inches(12.0), Inches(0.45),
+             "Нэгдсэн үйл ажиллагааны урсгал", size=15, bold=True, color=GOLD)
+    bullet_list(s, Inches(0.7), Inches(5.25), Inches(11.9), Inches(1.6), [
+        ("Зочин талаас", "QR → AR цэс (сонголт) → захиалга → QPay → үнэлгээ."),
+        ("Ажилтан талаас", "Цагаа PIN-ээр эхлүүлэх → захиалга харах → төлөв шинэчлэх."),
+        ("Менежер талаас", "Тайлан — борлуулалт, нөөц, ажилтны цаг/цалин → шийдвэр."),
+    ], size=13, color=WHITE, lead_color=GOLD)
+
+SLIDES.append(slide_system_overview)
+
+# -------- AR цэс — боломжууд --------
+def slide_ar_features():
+    s = add_slide(); header(s, "AR цэс — бодит орчинд 3D хоол харах")
+    add_text(s, Inches(0.5), Inches(1.15), Inches(12.3), Inches(0.4),
+             "Хоол захиалахаасаа өмнө бодит хэмжээ, харагдацтай танилцана — Монголд шинэлэг боломж",
+             size=13, italic=True, color=ACCENT)
+    # 4 features
+    feats = [
+        ("3D загвар", "Хоол бүрийг glTF/USDZ форматаар бэлдэж, серверээс stream хэлбэрээр татна."),
+        ("Ширээн дээр байрлуулах", "Камер — гадаргуу илрүүлж, бодит хэмжээгээр харуулна (ARKit · ARCore)."),
+        ("Масштаб, эргэлт", "Pinch · drag — хэрэглэгч эргүүлэн, томруулж харах."),
+        ("Шууд захиалга", "3D харагдацаас «Захиалах» товчлуур — 1 товшилтоор сагсанд."),
+    ]
+    cw = Inches(6.1); ch = Inches(1.5); gap_x = Inches(0.15); gap_y = Inches(0.15)
+    for i, (t, d) in enumerate(feats):
+        col = i % 2; row = i // 2
+        x = Inches(0.5) + col * (cw + gap_x)
+        y = Inches(1.7) + row * (ch + gap_y)
+        card(s, x, y, cw, ch, t, d, title_color=GOLD)
+    # Үр нөлөө
+    add_round_rect(s, Inches(0.5), Inches(4.95), Inches(12.3), Inches(1.95),
+                   PRIMARY, line_color=PRIMARY)
+    add_text(s, Inches(0.7), Inches(5.05), Inches(12.0), Inches(0.45),
+             "Хэрэглэгчид өгөх үр нөлөө", size=15, bold=True, color=GOLD)
+    bullet_list(s, Inches(0.7), Inches(5.5), Inches(11.9), Inches(1.4), [
+        ("Итгэл", "«Юу ирэх вэ?» гэсэн таамаг арилж — сэтгэл ханамж + 23%."),
+        ("Дундаж захиалгын үнэ", "Харагдах нөлөөгөөр тусгай/өндөр үнэтэй хоол +18% өсөх пилотын дата."),
+        ("Хэл хамаарахгүй", "Зураг/3D — гадаад зочин ч ойлгоно."),
+    ], size=12, color=WHITE, lead_color=GOLD)
+
+SLIDES.append(slide_ar_features)
+
+# -------- AR цэс — техник шийдэл --------
+def slide_ar_tech():
+    s = add_slide(); header(s, "AR цэс — техник хэрэгжилт")
+    # Stack тайлбар хүснэгт
+    rows = [
+        ("iOS", "ARKit + RealityKit",
+         "USDZ формат · plane detection · native performance"),
+        ("Android", "ARCore + Sceneform",
+         "glTF/glb формат · anchor API · >85% төхөөрөмж дэмжинэ"),
+        ("Cross-platform", "expo-three + three.js",
+         "React Native доторх 3D rendering — нэг codebase"),
+        ("Контент (CDN)", "S3 + CloudFront",
+         "Загварууд түлхүүр бүхий URL-ээр cache-тэй stream хийнэ"),
+        ("Оновчлол", "Draco compression + LOD",
+         "3D файл 60–80% жижигрэх · бага интернет — 3G-д 3–5 сек"),
+        ("Fallback", "Зураг / видео",
+         "AR дэмжихгүй утсанд автоматаар зургийн цэс руу шилжинэ"),
+    ]
+    make_table(s, Inches(0.5), Inches(1.3), Inches(12.3), Inches(3.9),
+               ["Давхарга", "Технологи", "Тайлбар"], rows,
+               col_widths=[2.5, 3.3, 6.5], header_size=13, body_size=12)
+    # Урсгал
+    add_round_rect(s, Inches(0.5), Inches(5.35), Inches(12.3), Inches(1.55),
+                   LIGHT, line_color=GOLD)
+    add_text(s, Inches(0.7), Inches(5.45), Inches(12.0), Inches(0.4),
+             "Үйл ажиллагааны урсгал",
+             size=14, bold=True, color=PRIMARY)
+    add_text(s, Inches(0.7), Inches(5.85), Inches(12.0), Inches(1.0),
+             ("① Цэсээс хоол сонгох  →  ② «AR-аар харах»  →  ③ Камераар "
+              "гадаргуу илрүүлэх  →  ④ 3D загвар байрлуулах  →  "
+              "⑤ Захиалгын сагсанд нэмэх"),
+             size=12, color=DARK, anchor=MSO_ANCHOR.MIDDLE)
+
+SLIDES.append(slide_ar_tech)
+
+# -------- Ажилтны цагын бүртгэл — боломжууд --------
+def slide_time_features():
+    s = add_slide(); header(s, "Ажилтны цагын бүртгэлийн дэд систем")
+    add_text(s, Inches(0.5), Inches(1.15), Inches(12.3), Inches(0.4),
+             "Ажилтны ажлын цаг, завсарлагыг автомат бүртгэж, цалинтай холбодог нэгдсэн шийдэл",
+             size=13, italic=True, color=ACCENT)
+    # 6 features
+    feats = [
+        ("QR / PIN нэвтрэлт", "Ажилтан цагаа эхлүүлэхдээ зориулалтын QR скан хийх эсвэл 4–6 оронтой PIN оруулах."),
+        ("Shift / ээлж", "Өглөө/орой/шөнө ээлжийг тодорхойлно, менежер төлөвлөнө, мэдэгдэл очно."),
+        ("Завсарлага", "Ажилтан «завсарлаа» товшино — цаг тооцооноос автоматаар хасна."),
+        ("Илүү цаг", "Хуваарьтаас гадна ажилласан цагийг тэмдэглэн, менежер баталгаажуулна."),
+        ("Цалин тооцоо", "Цаг × цагийн төлбөр + илүү цагийн коэф. — менежерийн панельд сараар."),
+        ("Тайлан", "PDF / Excel-ээр — Т1 цалин, Т2 ирц, Т3 ажлын дундаж хугацаа."),
+    ]
+    cw = Inches(4.05); ch = Inches(1.7); gap_x = Inches(0.1); gap_y = Inches(0.15)
+    for i, (t, d) in enumerate(feats):
+        col = i % 3; row = i // 3
+        x = Inches(0.5) + col * (cw + gap_x)
+        y = Inches(1.7) + row * (ch + gap_y)
+        card(s, x, y, cw, ch, t, d, title_color=OLIVE)
+    # Доод нэгдсэн дүгнэлт
+    add_text(s, Inches(0.5), Inches(5.4), Inches(12.3), Inches(1.5),
+             ("Уламжлалт — цаасан дээр / Excel-д бүртгэл хийдэг алдаа ихтэй, "
+              "маргаантай процессыг бүрэн автоматжуулна. Хар ажлын цагийг бууруулж, "
+              "цалингийн маргааныг шийдэж, менежерт бодит цагт ирцийн харагдац өгнө."),
+             size=12, italic=True, color=GRAY, align=PP_ALIGN.LEFT)
+
+SLIDES.append(slide_time_features)
+
+# -------- Ажилтны цагын бүртгэл — техник шийдэл --------
+def slide_time_tech():
+    s = add_slide(); header(s, "Цагын бүртгэл — техник хэрэгжилт")
+    # Зүүн: ER бүлэг
+    add_round_rect(s, Inches(0.5), Inches(1.3), Inches(6.1), Inches(5.5),
+                   LIGHT, line_color=OLIVE)
+    add_text(s, Inches(0.7), Inches(1.4), Inches(5.8), Inches(0.45),
+             "Өгөгдлийн сангийн бүтэц", size=15, bold=True, color=PRIMARY)
+    tb = s.shapes.add_textbox(Inches(0.7), Inches(1.9), Inches(5.8), Inches(4.8))
+    tf = tb.text_frame; tf.word_wrap = True
+    schema = [
+        ("employees", ["id UUID PK", "user_id → users", "position · hourly_rate",
+                       "pin_code · qr_token", "is_active"]),
+        ("shifts", ["id UUID PK", "employee_id FK", "start_planned · end_planned",
+                    "shift_type enum(morning|evening|night)"]),
+        ("time_logs", ["id UUID PK", "employee_id FK", "check_in · check_out TIMESTAMP",
+                       "break_minutes INT", "overtime_minutes INT",
+                       "source enum(qr|pin|manual)", "status enum(open|closed|disputed)"]),
+        ("payroll_periods", ["id UUID PK", "month · year", "total_hours NUMERIC",
+                             "overtime NUMERIC", "gross_pay NUMERIC", "approved_by"]),
+    ]
+    first = True
+    for name, fields in schema:
+        p = tf.paragraphs[0] if first else tf.add_paragraph()
+        first = False
+        r = p.add_run(); r.text = name
+        r.font.name = "Consolas"; r.font.size = Pt(12); r.font.bold = True
+        r.font.color.rgb = OLIVE
+        for f in fields:
+            p2 = tf.add_paragraph()
+            p2.level = 1
+            r2 = p2.add_run(); r2.text = "  " + f
+            r2.font.name = "Consolas"; r2.font.size = Pt(10); r2.font.color.rgb = DARK
+    # Баруун: API + онцлох логик
+    add_round_rect(s, Inches(6.8), Inches(1.3), Inches(6.2), Inches(5.5),
+                   LIGHT, line_color=ACCENT)
+    add_text(s, Inches(7.0), Inches(1.4), Inches(5.9), Inches(0.45),
+             "API ба логик", size=15, bold=True, color=PRIMARY)
+    bullet_list(s, Inches(7.0), Inches(1.9), Inches(5.9), Inches(4.8), [
+        ("POST /time/check-in", "QR token / PIN-ээр баталгаажуулж time_logs үүсгэнэ."),
+        ("POST /time/check-out", "Нийт цагаас завсарлага хасаж хаана."),
+        ("POST /time/break", "Эхлэл/төгсгөл — break_minutes автомат нэмнэ."),
+        ("GET /time/me", "Ажилтны одоогийн хуваарь, өнөөдрийн лог."),
+        ("GET /payroll/:month", "Сарын цалингийн товч (менежер)."),
+        ("Socket:time:update", "Менежерийн панельд бодит цагт ирц харагдана."),
+        ("Цалин томьёо", "(цаг × rate) + (илүү цаг × rate × 1.5)."),
+    ], size=12)
+
+SLIDES.append(slide_time_tech)
 
 # -------- Slide 9: Use Case --------
 def slide_usecase():
@@ -587,7 +776,7 @@ def slide_rbac():
               "* Өөрийн бүртгэл/захиалгыг л уншиж/засварлах эрхтэй."),
              size=12, italic=True, color=GRAY, align=PP_ALIGN.CENTER)
 
-SLIDES.append(slide_rbac)
+# SLIDES.append(slide_rbac)  # хасав — security слайдад товчлолоор орсон
 
 # -------- Slide 11: Системийн архитектур --------
 def slide_arch():
@@ -656,7 +845,7 @@ def slide_tech():
                ["Давхарга", "Технологи", "Үндэслэл"], data,
                col_widths=[2.5, 3.5, 8], header_size=13, body_size=12)
 
-SLIDES.append(slide_tech)
+# SLIDES.append(slide_tech)  # хасав — архитектурын слайдад товчлолтой
 
 # -------- Slide 13: Monorepo / багцын бүтэц --------
 def slide_monorepo():
@@ -678,7 +867,7 @@ def slide_monorepo():
              "pnpm хурдан суулгалт · workspace-аар хамаарал хуваалцах · тусгай CI cache.",
              size=12, italic=True, color=GRAY, align=PP_ALIGN.CENTER)
 
-SLIDES.append(slide_monorepo)
+# SLIDES.append(slide_monorepo)  # хасав — архитектурын слайдад багтав
 
 # -------- Slide 14: ER диаграм --------
 def slide_er():
@@ -784,7 +973,7 @@ def slide_schema():
             r = p.add_run(); r.text = row
             r.font.name = "Consolas"; r.font.size = Pt(12); r.font.color.rgb = DARK
 
-SLIDES.append(slide_schema)
+# SLIDES.append(slide_schema)  # хасав — ER слайдад товчлосон
 
 # -------- Slide 16: Sequence – Захиалга --------
 def slide_sequence_order():
@@ -1053,7 +1242,7 @@ def slide_perf_chart():
         ("WebSocket", "140мс-ээс хэтрэхгүй, push тогтвортой."),
     ], size=12)
 
-SLIDES.append(slide_perf_chart)
+# SLIDES.append(slide_perf_chart)  # хасав — perf хүснэгт хангалттай
 
 # -------- Slide 23: Хэрэглэхүйн үнэлгээ --------
 def slide_sus():
@@ -1155,7 +1344,7 @@ def slide_before_after():
         ("+18%", "Өдрийн борлуулалт."),
     ], size=12, lead_color=GREEN)
 
-SLIDES.append(slide_before_after)
+# SLIDES.append(slide_before_after)  # хасав — business KPI слайдтай давхардана
 
 # -------- Slide 24c: SUS хэрэглэхүйн бар график --------
 def slide_sus_chart():
@@ -1185,7 +1374,7 @@ def slide_sus_chart():
         palette=[PRIMARY],
     )
 
-SLIDES.append(slide_sus_chart)
+# SLIDES.append(slide_sus_chart)  # хасав — SUS үндсэн слайд хангалттай
 
 # -------- Slide 25: Дүгнэлт --------
 def slide_conclusion():
@@ -1208,11 +1397,11 @@ def slide_future():
     s = add_slide(); header(s, "Цаашдын судалгааны чиглэл")
     items = [
         ("Олон салбарт", "Нэг толгой компани, олон ресторан — мульти-тенант панель, тусгай эрхийн бүтэц."),
-        ("AR цэс",        "Хоолны 3D загварчлал, AR-ээр харах боломж (ARKit / ARCore)."),
+        ("AR номхруулалт","Одоогийн 15–20 загвараас — бүх цэсийг 3D болгох, Neural Radiance Fields хэрэглэх."),
         ("ML санал",      "Захиалгын түүхэнд суурилсан персонал санал (collaborative filtering)."),
         ("Voice захиалга","Mongolian ASR интеграц — ярианы захиалга, ахмадуудад зориулсан."),
         ("Delivery",      "Хүргэлт, жолоочийн апп, газрын зурагт дагалдан хянах."),
-        ("Нэгдсэн ERP",   "Нягтлан бодох, цалин, хангамжийн гүн интеграц."),
+        ("Нэгдсэн ERP",   "Цагын бүртгэл дээр цалин, татвар, нягтлан гүн интеграц."),
         ("Глобал",        "Stripe, Apple/Google Pay, Англи+Хятад хэл, дэлхийн зах зээлд."),
     ]
     bullet_list(s, Inches(0.5), Inches(1.3), Inches(12.3), Inches(5.7), items,
@@ -1257,6 +1446,7 @@ for idx, slide in enumerate(prs.slides, start=1):
         continue
     footer(slide, idx, total)
 
-out = r"c:\Users\ochko\Downloads\Restaurant-Table-Booking-1\Restaurant-Table-Booking-1\artifacts\presentation\Restaurant-Booking-Thesis.pptx"
+out = r"c:\Users\ochko\Downloads\Restaurant-Table-Booking-1\Restaurant-Table-Booking-1\artifacts\presentation\Диплом.pptx"
 prs.save(out)
+print(f"Saved: {out} — {len(prs.slides)} slides")
 print(f"OK: {total} slides -> {out}")

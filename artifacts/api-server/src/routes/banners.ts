@@ -12,7 +12,8 @@ router.get("/banners", async (_req, res) => {
     const banners = await db.select().from(bannersTable).where(eq(bannersTable.active, true)).orderBy(asc(bannersTable.sortOrder));
     res.json(banners);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -22,7 +23,8 @@ router.get("/banners/all", requireAuth, async (_req, res) => {
     const banners = await db.select().from(bannersTable).orderBy(asc(bannersTable.sortOrder));
     res.json(banners);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -36,7 +38,8 @@ router.post("/banners", requireAuth, requireRole("manager"), async (req, res) =>
     }).returning();
     res.status(201).json(banner);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -55,7 +58,8 @@ router.patch("/banners/:id", requireAuth, requireRole("manager"), async (req, re
     if (!banner) { res.status(404).json({ error: "not_found" }); return; }
     res.json(banner);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -65,7 +69,8 @@ router.delete("/banners/:id", requireAuth, requireRole("manager"), async (req, r
     await db.delete(bannersTable).where(eq(bannersTable.id, id));
     res.status(204).send();
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 

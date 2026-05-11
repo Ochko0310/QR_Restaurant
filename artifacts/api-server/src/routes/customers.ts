@@ -10,7 +10,8 @@ router.post("/customers", async (_req, res) => {
     const [customer] = await db.insert(customersTable).values({}).returning();
     res.status(201).json({ id: customer.id, createdAt: customer.createdAt });
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -25,7 +26,8 @@ router.get("/customers/:id", async (req, res) => {
     await db.update(customersTable).set({ lastSeenAt: new Date() }).where(eq(customersTable.id, id));
     res.json(customer);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -62,7 +64,8 @@ router.get("/customers/:id/orders", async (req, res) => {
 
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 

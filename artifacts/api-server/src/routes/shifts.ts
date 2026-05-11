@@ -24,7 +24,8 @@ router.get("/shifts/me", requireAuth, async (req, res) => {
       .limit(20);
     res.json({ openShift: openShift ?? null, recent });
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -43,7 +44,8 @@ router.post("/shifts/clock-in", requireAuth, async (req, res) => {
     const [row] = await db.insert(staffShiftsTable).values({ userId: user.id }).returning();
     res.status(201).json(row);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -67,7 +69,8 @@ router.post("/shifts/clock-out", requireAuth, async (req, res) => {
       .returning();
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -97,7 +100,8 @@ router.get("/shifts", requireAuth, requireRole("manager"), async (req, res) => {
       : await query.orderBy(desc(staffShiftsTable.clockInAt));
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 

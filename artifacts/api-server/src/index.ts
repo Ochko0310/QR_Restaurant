@@ -1,9 +1,10 @@
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
-import { sql } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { eq, sql } from "drizzle-orm";
+import { db, tablesTable } from "@workspace/db";
 import app from "./app";
 import { logger } from "./lib/logger";
+import { verifyToken, type JwtPayload } from "./lib/auth";
 
 // One-time cleanup: drop any legacy waiter users left over from old seeds.
 // Cast to text so this works whether or not the 'waiter' enum value still exists.
@@ -39,12 +40,48 @@ const io = new SocketIOServer(httpServer, {
   },
 });
 
+interface SocketAuth {
+  token?: string;
+  tableToken?: string;
+}
+
+io.use(async (socket, next) => {
+  const auth = socket.handshake.auth as SocketAuth;
+  try {
+    if (auth.token) {
+      const payload = verifyToken(auth.token);
+      (socket.data as { user?: JwtPayload }).user = payload;
+      return next();
+    }
+    if (auth.tableToken) {
+      const [table] = await db.select().from(tablesTable).where(eq(tablesTable.qrToken, auth.tableToken));
+      if (!table) return next(new Error("invalid_table_token"));
+      (socket.data as { tableToken?: string }).tableToken = auth.tableToken;
+      return next();
+    }
+    return next(new Error("unauthenticated"));
+  } catch {
+    return next(new Error("unauthenticated"));
+  }
+});
+
 io.on("connection", (socket) => {
-  logger.info({ socketId: socket.id }, "Socket connected");
+  const user = (socket.data as { user?: JwtPayload }).user;
+  const tableToken = (socket.data as { tableToken?: string }).tableToken;
+  logger.info({ socketId: socket.id, role: user?.role, tableToken: tableToken ? "guest" : undefined }, "Socket connected");
 
   socket.on("join", (room: string) => {
-    socket.join(room);
-    logger.info({ socketId: socket.id, room }, "Socket joined room");
+    if (user && room.startsWith("restaurant_")) {
+      socket.join(room);
+      logger.info({ socketId: socket.id, room }, "Staff joined room");
+      return;
+    }
+    if (tableToken && room === `session_${tableToken}`) {
+      socket.join(room);
+      logger.info({ socketId: socket.id, room }, "Guest joined room");
+      return;
+    }
+    logger.warn({ socketId: socket.id, room }, "Socket join rejected");
   });
 
   socket.on("disconnect", () => {

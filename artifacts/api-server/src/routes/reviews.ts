@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { reviewsTable } from "@workspace/db";
 import { desc } from "drizzle-orm";
-import { requireAuth } from "../lib/auth";
+import { requireAuth, requireRole } from "../lib/auth";
 import { createNotification } from "../lib/notifications";
 import type { Server as SocketIOServer } from "socket.io";
 
@@ -19,17 +19,19 @@ router.get("/reviews", async (_req, res) => {
     }).from(reviewsTable).orderBy(desc(reviewsTable.rating), desc(reviewsTable.createdAt));
     res.json(reviews);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
 // Staff: get reviews with personal info
-router.get("/reviews/all", requireAuth, async (_req, res) => {
+router.get("/reviews/all", requireAuth, requireRole("manager"), async (_req, res) => {
   try {
     const reviews = await db.select().from(reviewsTable).orderBy(desc(reviewsTable.rating), desc(reviewsTable.createdAt));
     res.json(reviews);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -37,29 +39,32 @@ router.get("/reviews/all", requireAuth, async (_req, res) => {
 router.post("/reviews", async (req, res) => {
   try {
     const { name, phone, rating, comment } = req.body as {
-      name: string; phone: string; rating: number; comment: string;
+      name?: string; phone?: string; rating: number; comment: string;
     };
-    if (!name || !phone || !rating || !comment) {
-      res.status(400).json({ error: "validation_error", message: "Бүх талбарыг бөглөнө үү" });
+    if (!rating || !comment) {
+      res.status(400).json({ error: "validation_error", message: "Үнэлгээ болон сэтгэгдэл шаардлагатай" });
       return;
     }
     if (rating < 1 || rating > 5) {
       res.status(400).json({ error: "validation_error", message: "Үнэлгээ 1-5 байх ёстой" });
       return;
     }
-    const [review] = await db.insert(reviewsTable).values({ name, phone, rating, comment }).returning();
+    const cleanName = name?.trim() || null;
+    const cleanPhone = phone?.trim() || null;
+    const [review] = await db.insert(reviewsTable).values({ name: cleanName, phone: cleanPhone, rating, comment }).returning();
 
     const io: SocketIOServer = req.app.get("io");
     await createNotification(io, {
       type: "review_new",
       title: "Шинэ сэтгэгдэл",
-      message: `${name} — ${rating}★ "${comment.slice(0, 60)}${comment.length > 60 ? "…" : ""}"`,
+      message: `${cleanName ?? "Нэргүй"} — ${rating}★ "${comment.slice(0, 60)}${comment.length > 60 ? "…" : ""}"`,
       data: { reviewId: review.id, rating },
     });
 
     res.status(201).json({ id: review.id, rating: review.rating, comment: review.comment, createdAt: review.createdAt });
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 

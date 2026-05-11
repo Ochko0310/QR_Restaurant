@@ -24,7 +24,8 @@ router.get("/users", requireAuth, requireRole("manager"), async (_req, res) => {
       .orderBy(desc(usersTable.createdAt));
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -44,8 +45,8 @@ router.post("/users", requireAuth, requireRole("manager"), async (req, res) => {
       res.status(400).json({ error: "validation_error", message: "Буруу үүрэг" });
       return;
     }
-    if (password.length < 4) {
-      res.status(400).json({ error: "validation_error", message: "Нууц үг хамгийн багадаа 4 тэмдэгттэй байх ёстой" });
+    if (password.length < 8) {
+      res.status(400).json({ error: "validation_error", message: "Нууц үг хамгийн багадаа 8 тэмдэгттэй байх ёстой" });
       return;
     }
 
@@ -68,7 +69,8 @@ router.post("/users", requireAuth, requireRole("manager"), async (req, res) => {
       });
     res.status(201).json(user);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -87,8 +89,8 @@ router.patch("/users/:id", requireAuth, requireRole("manager"), async (req, res)
       data.role = role;
     }
     if (password !== undefined) {
-      if (password.length < 4) {
-        res.status(400).json({ error: "validation_error", message: "Нууц үг хамгийн багадаа 4 тэмдэгттэй байх ёстой" });
+      if (password.length < 8) {
+        res.status(400).json({ error: "validation_error", message: "Нууц үг хамгийн багадаа 8 тэмдэгттэй байх ёстой" });
         return;
       }
       data.passwordHash = await bcrypt.hash(password, 10);
@@ -116,7 +118,8 @@ router.patch("/users/:id", requireAuth, requireRole("manager"), async (req, res)
     }
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 
@@ -139,7 +142,8 @@ router.delete("/users/:id", requireAuth, requireRole("manager"), async (req, res
     }
     res.status(204).send();
   } catch (err) {
-    res.status(500).json({ error: "server_error", message: String(err) });
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Internal server error" });
   }
 });
 

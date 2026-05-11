@@ -3,11 +3,16 @@ import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ConfirmProvider } from "@/hooks/use-confirm";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { useStore } from "@/hooks/use-store";
 import GuestMenuPage from "@/pages/guest/MenuPage";
 import StaffLoginPage from "@/pages/staff/LoginPage";
 import StaffDashboard from "@/pages/staff/StaffDashboard";
+import LandingPage from "@/pages/public/LandingPage";
+import BrowseMenuPage from "@/pages/public/BrowseMenuPage";
+import ReservationsPage from "@/pages/public/ReservationsPage";
+import ReviewsPage from "@/pages/public/ReviewsPage";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -29,7 +34,10 @@ function AppContent() {
 
   return (
     <Switch>
-      <Route path="/" component={() => <Redirect to="/menu" />} />
+      <Route path="/" component={LandingPage} />
+      <Route path="/browse" component={BrowseMenuPage} />
+      <Route path="/reservations" component={ReservationsPage} />
+      <Route path="/reviews" component={ReviewsPage} />
       <Route path="/menu" component={GuestMenuPage} />
       <Route path="/demo" component={GuestMenuPage} />
       <Route path="/staff/login" component={StaffLoginPage} />
@@ -45,10 +53,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <AppContent />
-        </WouterRouter>
-        <Toaster />
+        <ConfirmProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <AppContent />
+          </WouterRouter>
+          <Toaster />
+        </ConfirmProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
