@@ -75,3 +75,13 @@ artifacts/api-server/uploads/
 *.snm
 *.vrb
 .tools/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# MS Office temp lock files
+~$*
+
+# Reference template (read-only, not tracked)
+artifacts/api-server/IT diplom 2025 _latex_.zip/

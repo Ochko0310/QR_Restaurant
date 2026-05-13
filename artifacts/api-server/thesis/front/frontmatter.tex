@@ -88,7 +88,8 @@
 
 \vspace{1cm}
 \begin{center}
-\begin{tabular}{|c|p{8cm}|c|c|}
+\small
+\begin{tabularx}{\textwidth}{|c|L|c|c|}
 \hline
 \rowcolor{TableHdr}\textcolor{white}{\textbf{No}} &
 \textcolor{white}{\textbf{Ажлын бүлэг, хэсгийн нэр}} &
@@ -99,11 +100,56 @@
 3 & Системийн шаардлага ба шинжилгээ & 30\% & 2025-04-06 \\ \hline
 4 & Төслийн хэсэг           & 30\% & 2025-05-04 \\ \hline
 5 & Дүгнэлт                 & 10\% & 2025-05-13 \\ \hline
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 \vspace{1.5cm}
-{\normalsize Төлөвлөгөөг боловсруулсан оюутан:\hfill\underline{\hspace{5cm}}/Э.~Очбадрах/}
+\noindent Төлөвлөгөөг боловсруулсан оюутан: \dotfill /Э.~Очбадрах/
+\clearpage
+
+% ================================================================
+%  ТӨГСӨЛТИЙН АЖЛЫН ЯВЦ
+% ================================================================
+\thispagestyle{plain}
+\vspace*{0.3cm}
+\begin{center}
+{\large\bfseries ТӨГСӨЛТИЙН АЖЛЫН ЯВЦ}\\[8pt]
+\end{center}
+
+\begin{center}
+\footnotesize
+\begin{tabularx}{\textwidth}{|c|L|c|c|}
+\hline
+\rowcolor{TableHdr}\textcolor{white}{\textbf{No}} &
+\textcolor{white}{\textbf{Хийж гүйцэтгэсэн ажил}} &
+\textcolor{white}{\textbf{Биелсэн хугацаа}} &
+\textcolor{white}{\textbf{Гарын үсэг}} \\ \hline
+1 & Сэдвийн судалгаа, дотоод болон гадаад ижил төстэй системийн харьцуулалт, онолын суурийн боловсруулалт & 2025-03-19 & \\ \hline
+2 & Хэрэглэгчийн ба функциональ шаардлагын тодорхойлолт, ER диаграм, юзкейс боловсруулалт & 2025-04-06 & \\ \hline
+3 & Backend (Express, Drizzle, PostgreSQL), Frontend (React, Vite), realtime (Socket.IO) хэрэгжүүлэлт & 2025-05-04 & \\ \hline
+4 & Туршилт, үнэлгээний хэсэг, дүгнэлт, эцсийн засвар & 2025-05-13 & \\ \hline
+\end{tabularx}
+\end{center}
+
+\vspace{0.4cm}
+\begin{center}
+\begin{minipage}{0.92\textwidth}
+{\bfseries Ажлын товч дүгнэлт:}\\[0.2cm]
+\hbox to \linewidth{\dotfill}\\[0.25cm]
+\hbox to \linewidth{\dotfill}\\[0.25cm]
+\hbox to \linewidth{\dotfill}\\[0.35cm]
+Удирдагч: \hbox to 4cm{\dotfill} /П.~Нарангэрэл/
+\end{minipage}
+\end{center}
+
+\vspace{0.5cm}
+\begin{center}
+{\bfseries ЗӨВШӨӨРӨЛ}\\[0.3cm]
+\begin{minipage}{0.92\textwidth}
+Оюутан Э.~Очбадрахын бичсэн төгсөлтийн ажлыг УШК-д хамгаалуулахаар тодорхойлов.\\[0.5cm]
+Салбарын эрхлэгч:\hfill\underline{\hspace{5cm}}/А.~Эрхлэгч/
+\end{minipage}
+\end{center}
 \clearpage
 
 % ================================================================
@@ -147,18 +193,18 @@
 {\large\bfseries Өмнөговь аймаг дахь Технологийн Дээд Сургууль}\\
 {\large Мэдээллийн технологийн салбар}
 
-\vspace{0.5cm}
+\vspace{0.3cm}
 {\large\bfseries Хураангуй}
 \addcontentsline{toc}{chapter}{Хураангуй}
 
-\vspace{0.3cm}
-{\normalsize Рестораны ширээ захиалга, цэс удирдлагын мобайл системийн загварчлал, хэрэгжилт}\\[6pt]
+\vspace{0.2cm}
+{\normalsize Рестораны ширээ захиалга, цэс удирдлагын мобайл системийн загварчлал, хэрэгжилт}\\[4pt]
 {\normalsize Э.~Очбадрах}\\
 {\small \texttt{ochkoo187@gmail.com}}
 \end{center}
 
-\vspace{0.8cm}
-{\normalsize
+\vspace{0.4cm}
+{\small
 Хүнсний үйлчилгээний салбар нь дэлхий нийтэд хурдацтай дижитал шилжилт хийж буй
 өнөө үед Монгол Улсын рестораны 92\%-д шинэ технологийг нэвтрүүлэхэд санхүүгийн
 дарамт, техникийн мэдлэгийн дутагдал, Монгол хэлийг дэмждэг бэлэн шийдлийн
@@ -172,18 +218,19 @@
 
 Системийг React 18 + TypeScript (вэб клиент), Node.js/Express.js (API сервер),
 PostgreSQL 16 (өгөгдлийн сан), Socket.IO v4 (бодит цагийн холболт) технологиудыг
-ашиглан 4 давхаргат архитектураар хөгжүүлсэн. JWT HS256 токен дээр суурилсан хандалтын
-хяналт, Drizzle ORM-д суурилсан өгөгдлийн давхарга, pnpm workspace монорепо бүтцийг
-нэвтрүүлсэн.
+ашиглан 4 давхаргат архитектураар хөгжүүлсэн. JWT HS256 токен дээр суурилсан
+хандалтын хяналт, Drizzle ORM-д суурилсан өгөгдлийн давхарга, pnpm workspace
+монорепо бүтцийг нэвтрүүлсэн.
 
 Туршилтын үр дүнд API хариу 120 мс дундаж, WebSocket мессежийн дамжуулалт 45 мс,
-SUS (System Usability Scale) үнэлгээ 84.2/100 оноо (``Маш сайн'' зэрэглэл), хэрэглэгч
-захиалга өгөхөд зарцуулах хугацаа уламжлалт аргаас 62\%-иар буурсан үр дүн гарсан.
-}
+SUS (System Usability Scale) үнэлгээ 84.2/100 оноо (``Маш сайн'' зэрэглэл),
+хэрэглэгч захиалга өгөхөд зарцуулах хугацаа уламжлалт аргаас 62\%-иар буурсан
+үр дүн гарсан.
 
-\vspace{0.5cm}
-{\small\textbf{Түлхүүр үгс:} QR код, мобайл захиалга, рестораны систем, ширээ захиалга,
-цэс удирдлага, WebSocket, Socket.IO, бодит цагийн мэдэгдэл, React, Node.js, PostgreSQL}
+\vspace{0.3cm}
+\noindent\textbf{Түлхүүр үгс:} QR код, мобайл захиалга, рестораны систем, ширээ захиалга,
+цэс удирдлага, WebSocket, Socket.IO, бодит цагийн мэдэгдэл, React, Node.js, PostgreSQL.
+}
 \clearpage
 
 % ================================================================

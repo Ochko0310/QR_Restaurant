@@ -15,7 +15,16 @@
 \setotherlanguage{mongolian}
 
 \usepackage{geometry}
-\geometry{a4paper, left=3cm, right=2cm, top=2.5cm, bottom=2.5cm}
+% ШУТИС стандарт margin: дотоод 4cm, гадаад 2.5cm, дээд 2cm, доод 3.5cm
+\geometry{
+  a4paper,
+  inner=4cm,
+  outer=2.5cm,
+  top=2cm,
+  bottom=3.5cm,
+  headheight=14pt,
+  footskip=1.5cm
+}
 
 \usepackage{setspace}
 \onehalfspacing
@@ -44,19 +53,35 @@
 \usepackage{float}
 \usepackage{subcaption}
 
-% Зураг олдохгүй үед алдаа гаргахгүй
+% Зураг олдохгүй үед placeholder харуулна (юу оруулах ёстойг тайлбарлана)
 \let\OrigIncludegraphics\includegraphics
 \renewcommand{\includegraphics}[2][]{%
   \IfFileExists{#2}{\OrigIncludegraphics[#1]{#2}}{%
-    \fbox{\parbox{0.5\textwidth}{\centering\vspace{2cm}%
-    \textbf{Зураг:} \texttt{#2}\\[6pt]%
-    (Файл upload хийгдээгүй байна)%
-    \vspace{2cm}}}%
+    \setlength{\fboxsep}{6pt}%
+    \fbox{\parbox{0.85\textwidth}{\centering%
+      \vspace{1.5cm}%
+      {\large\bfseries\color{red!70!black} [ЗУРАГ ОРУУЛАХ ХЭСЭГ]}\\[12pt]%
+      {\normalsize\textbf{Файл:}\ \texttt{#2}}\\[4pt]%
+      {\small\textit{Доорх caption-ын дагуу холбогдох screenshot оруулна уу}}\\[6pt]%
+      \vspace{1.5cm}%
+    }}%
   }%
 }
 
 \usepackage{tikz}
 \usetikzlibrary{shapes,shapes.geometric,arrows,arrows.meta,positioning,fit,calc,backgrounds}
+
+% --- TikZ зургийг \linewidth-д таарсан хэмжээнд хүртэл бууруулах wrapper ---
+% Хэрэглээ: \begin{fittedtikz} ... \end{fittedtikz} болгож tikzpicture-г орлуулна
+\newsavebox{\fitbox}
+\newenvironment{fittedtikz}[1][]
+  {\begin{lrbox}{\fitbox}\begin{tikzpicture}[#1]}
+  {\end{tikzpicture}\end{lrbox}%
+   \ifdim\wd\fitbox>\linewidth
+     \resizebox{\linewidth}{!}{\usebox{\fitbox}}%
+   \else
+     \usebox{\fitbox}%
+   \fi}
 
 \usepackage{listings}
 \lstdefinelanguage{JavaScript}{
@@ -78,7 +103,7 @@
 }
 \lstalias{TypeScript}{JavaScript}
 \lstset{
-  basicstyle=\ttfamily\footnotesize,
+  basicstyle=\ttfamily\scriptsize,
   keywordstyle=\bfseries\color{OliveGreen},
   commentstyle=\itshape\color{CadetBlue},
   stringstyle=\color{red!70!black},
@@ -88,9 +113,13 @@
   numbers=left,
   numberstyle=\tiny\color{gray},
   breaklines=true,
+  breakatwhitespace=false,
+  breakindent=0pt,
+  postbreak=\mbox{\textcolor{red}{$\hookrightarrow$}\space},
   showstringspaces=false,
   tabsize=2,
   captionpos=b,
+  columns=fullflexible,
 }
 \renewcommand{\lstlistingname}{Эх код}
 
@@ -112,10 +141,12 @@
 \usepackage{fancyhdr}
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\small\textit{Рестораны ширээ захиалга, цэс удирдлагын мобайл систем}}
+% Зүүн талд тухайн бүлгийн нэрийг автоматаар харуулна, баруун талд сургуулийн товч нэр
+\fancyhead[L]{\small\nouppercase\leftmark}
 \fancyhead[R]{\small Өмнөговь ТДС}
 \fancyfoot[C]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\chaptermark}[1]{\markboth{\textit{#1}}{}}
 \fancypagestyle{plain}{%
   \fancyhf{}
   \fancyfoot[C]{\thepage}
@@ -124,14 +155,28 @@
 
 \usepackage{caption}
 \captionsetup{font=small,labelfont=bf}
-\renewcommand{\figurename}{Зураг}
-\renewcommand{\tablename}{Хүснэгт}
-\renewcommand{\contentsname}{Гарчиг}
-\renewcommand{\listfigurename}{Зургийн жагсаалт}
-\renewcommand{\listtablename}{Хүснэгтийн жагсаалт}
-\renewcommand{\chaptername}{Бүлэг}
-\renewcommand{\appendixname}{Хавсралт}
-\renewcommand{\bibname}{Ном зүй}
+
+% --- Бүх "англи" нэрийг монголоор орчуулах ---
+% Polyglossia нь captionsenglish-ийг тухайн хэлэнд орохдоо хуулдаг тул
+% AtBeginDocument-д renewcommand хийсэн ч англи хэл идэвхжих үед override
+% хийгдэх боломжтой. Тиймээс polyglossia-ийн captions hook-д бас нэмэх ёстой.
+\usepackage{etoolbox}
+\newcommand{\MglNames}{%
+  \renewcommand{\figurename}{Зураг}%
+  \renewcommand{\tablename}{Хүснэгт}%
+  \renewcommand{\contentsname}{ГАРЧИГ}%
+  \renewcommand{\listfigurename}{ЗУРГИЙН ЖАГСААЛТ}%
+  \renewcommand{\listtablename}{ХҮСНЭГТИЙН ЖАГСААЛТ}%
+  \renewcommand{\chaptername}{БҮЛЭГ}%
+  \renewcommand{\appendixname}{ХАВСРАЛТ}%
+  \renewcommand{\bibname}{НОМ ЗҮЙ}%
+  \renewcommand{\refname}{НОМ ЗҮЙ}%
+  \renewcommand{\indexname}{Индекс}%
+  \renewcommand{\abstractname}{Хураангуй}%
+}
+% Polyglossia-ийн captionsenglish hook-д залгана
+\ifcsdef{captionsenglish}{\gappto\captionsenglish{\MglNames}}{}
+\AtBeginDocument{\MglNames}
 
 \usepackage[numbers,sort&compress]{natbib}
 \bibliographystyle{unsrtnat}
@@ -141,13 +186,25 @@
 \setlength{\parindent}{1.25cm}
 \setlength{\parskip}{4pt}
 
+% Margin overflow-аас сэргийлэх ерөнхий тохиргоо
+\emergencystretch=3em        % шаардлагатай үед мөрийг сунгах
+\tolerance=2000              % муу line break-уудыг зөвшөөрөх
+\hbadness=10000              % underfull warning хаах
+\hyphenpenalty=500           % үг таслахыг бага зэрэг урамшуулах
+\exhyphenpenalty=500
+
 % ================================================================
 \begin{document}
 
 \include{front/frontmatter}
 
+% Англи нэрийг шууд override хийж байж жагсаалт үүсгэнэ
+\MglNames
+\renewcommand{\contentsname}{ГАРЧИГ}
 \tableofcontents
+\renewcommand{\listfigurename}{ЗУРГИЙН ЖАГСААЛТ}
 \listoffigures
+\renewcommand{\listtablename}{ХҮСНЭГТИЙН ЖАГСААЛТ}
 \listoftables
 \clearpage
 
@@ -195,6 +252,7 @@ WS & WebSocket -- Вэб сокет, 2 талын байнгын холболт�
 \include{chapters/ch1}
 \include{chapters/ch2}
 \include{chapters/ch3}
+\include{chapters/ch4}
 \include{chapters/conclusion}
 
 \addcontentsline{toc}{chapter}{Ном зүй}

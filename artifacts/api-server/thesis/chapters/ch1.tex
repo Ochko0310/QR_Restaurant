@@ -72,7 +72,7 @@ COVID-19 цар тахлын үе нь дэлхийн рестораны сал�
 \caption{Монголын болон гадаад системүүдийн харьцуулалт}
 \label{tab:compare}
 \centering
-\small
+\footnotesize
 \begin{tabularx}{\textwidth}{|L|Y|Y|Y|Y|}
 \hline
 \rowcolor{TableHdr}
@@ -182,7 +182,7 @@ WebSocket нь 2011 онд IETF-ийн RFC 6455 стандартаар батл�
 
 \begin{figure}[htbp]
 \centering
-\begin{tikzpicture}[
+\begin{fittedtikz}[
   box/.style={rectangle, draw, rounded corners=4pt, minimum width=3cm,
     minimum height=0.8cm, align=center, font=\small},
   arr/.style={-{Stealth}, thick}
@@ -203,7 +203,7 @@ WebSocket нь 2011 онд IETF-ийн RFC 6455 стандартаар батл�
   {emit('order\_update')} (client);
 
 \node[font=\tiny,text=gray] at (4,-2) {TCP байнгын холболт -- header overhead байхгүй};
-\end{tikzpicture}
+\end{fittedtikz}
 \caption{WebSocket протоколын харилцааны загвар}
 \label{fig:websocket}
 \end{figure}

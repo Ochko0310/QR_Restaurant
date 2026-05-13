@@ -22,7 +22,7 @@
 
 \begin{figure}[htbp]
 \centering
-\begin{tikzpicture}[
+\begin{fittedtikz}[
   fstep/.style={rectangle, draw, rounded corners=4pt, minimum width=3.5cm,
     minimum height=0.9cm, align=center, font=\small, fill=blue!10},
   decision/.style={diamond, draw, aspect=2, minimum width=3cm,
@@ -51,7 +51,7 @@
 \node[right=1.5cm of order, font=\scriptsize, text=gray] {POST /api/orders};
 \node[right=1.5cm of ws, font=\scriptsize, text=gray] {socket.emit('new\_order')};
 \node[right=1.5cm of pay, font=\scriptsize, text=gray] {PATCH /api/orders/:id};
-\end{tikzpicture}
+\end{fittedtikz}
 \caption{Системийн ерөнхий үйл ажиллагааны урсгал}
 \label{fig:flow}
 \end{figure}
@@ -564,7 +564,7 @@ React компонент дэлгэцийн зохиомжийг Figma-д зох
 
 \begin{figure}[htbp]
 \centering
-\begin{tikzpicture}[
+\begin{fittedtikz}[
   actor/.style={font=\small, align=center},
   uc/.style={ellipse, draw, minimum width=3.4cm, minimum height=0.8cm,
     align=center, font=\scriptsize, fill=blue!5},
@@ -655,14 +655,14 @@ React компонент дэлгэцийн зохиомжийг Figma-д зох
 \draw[inc] (uc5) to[bend left=20] node[right,font=\tiny]{\textless{}\textless{}include\textgreater{}\textgreater{}} (uc14);
 \draw[inc] (uc8) to[bend left=20] node[right,font=\tiny]{\textless{}\textless{}include\textgreater{}\textgreater{}} (uc14);
 
-\end{tikzpicture}
+\end{fittedtikz}
 \caption{Системийн UML юзкейс диаграм}
 \label{fig:usecase}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\begin{tikzpicture}[
+\begin{fittedtikz}[
   role/.style={rectangle, draw, rounded corners=4pt, minimum width=2.6cm,
     minimum height=0.7cm, align=center, font=\small\bfseries, fill=blue!12},
   perm/.style={rectangle, draw, minimum width=3cm, minimum height=0.5cm,
@@ -687,7 +687,7 @@ React компонент дэлгэцийн зохиомжийг Figma-д зох
 
 \node[perm, right=1cm of ktn, yshift=0]      {Бэлтгэх захиалгын самбар (KDS)};
 
-\end{tikzpicture}
+\end{fittedtikz}
 \caption{Дүрд суурилсан хандалтын матриц (RBAC)}
 \label{fig:rbac}
 \end{figure}
